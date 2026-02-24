@@ -1,0 +1,39 @@
+{
+  "safety": {
+    "max_actions_per_minute": 100,
+    "require_confirmation_for_high_risk": true,
+    "emergency_stop_hotkey": "ctrl+alt+esc",
+    "enable_action_logging": true,
+    "log_file": "logs/automation_log.jsonl"
+  },
+  "blacklist": {
+    "system_protected": true,
+    "custom_paths": [],
+    "custom_processes": ["antivirus.exe"]
+  },
+  "input": {
+    "mouse_move_duration": 0.2,
+    "typing_interval": 0.01,
+    "click_delay": 0.1
+  },
+  "screen": {
+    "default_monitor": 0,
+    "ocr_language": "eng",
+    "screenshot_format": "png"
+  },
+  "windows": {
+    "search_timeout": 5.0,
+    "element_interaction_delay": 0.5,
+    "backend": "uia"
+  },
+  "processes": {
+    "launch_timeout": 10.0,
+    "kill_timeout": 5.0,
+    "require_confirmation_for_kill": true
+  },
+  "narrator": {
+    "verbose": true,
+    "use_tts": false,
+    "speed": "normal"
+  }
+}

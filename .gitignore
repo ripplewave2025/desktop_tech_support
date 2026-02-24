@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Logs
+logs/
+*.jsonl
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Test output
+test_output.txt
+
+# Virtual environments
+venv/
+.env/
