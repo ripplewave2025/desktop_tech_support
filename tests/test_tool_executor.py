@@ -111,10 +111,17 @@ class TestPowerShellTool(unittest.TestCase):
     def setUp(self):
         self.executor = ToolExecutor()
 
-    def test_powershell_basic_command(self):
-        result = run_async(self.executor.execute("run_powershell", {"command": "echo 'hello'"}))
+    @patch("ai.tool_executor.subprocess.run")
+    def test_powershell_basic_command(self, mock_run):
+        mock_proc = MagicMock()
+        mock_proc.stdout = "svc"
+        mock_proc.stderr = ""
+        mock_proc.returncode = 0
+        mock_run.return_value = mock_proc
+
+        result = run_async(self.executor.execute("run_powershell", {"command": "Get-Service"}))
         self.assertIn("stdout", result)
-        self.assertIn("hello", result["stdout"])
+        self.assertEqual(result["returncode"], 0)
 
     def test_powershell_blocks_destructive(self):
         result = run_async(self.executor.execute("run_powershell", {"command": "Remove-Item C:\\important"}))

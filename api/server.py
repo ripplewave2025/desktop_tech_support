@@ -41,8 +41,16 @@ app = FastAPI(
 # Allow the frontend to connect
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=[
+        "http://127.0.0.1",
+        "http://localhost",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+    ],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -54,6 +62,31 @@ pm = ProcessManager()
 _agent = None
 _watcher = None
 _sessions: Dict[str, Any] = {}  # session_id -> ZoraAgent (for multi-tab isolation)
+_runtime_api_keys: Dict[str, str] = {}
+
+
+def _provider_env_var(provider: str) -> Optional[str]:
+    """Map provider name to environment variable for API key."""
+    return {
+        "claude": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "grok": "XAI_API_KEY",
+        "groq": "GROQ_API_KEY",
+    }.get(provider)
+
+
+def _inject_runtime_api_key(config: Dict) -> Dict:
+    """Inject runtime-only API keys into config before provider creation."""
+    out = dict(config)
+    ai = dict(out.get("ai", {}))
+    provider = ai.get("provider", "ollama")
+
+    runtime_key = _runtime_api_keys.get(provider)
+    if runtime_key:
+        ai["api_key"] = runtime_key
+
+    out["ai"] = ai
+    return out
 
 
 def _load_config() -> Dict:
@@ -76,7 +109,7 @@ def _get_agent():
             from ai.agent import ZoraAgent
             from ai.provider_factory import get_provider
 
-            config = _load_config()
+            config = _inject_runtime_api_key(_load_config())
             provider = get_provider(config)
             _agent = ZoraAgent(provider)
             logger.info(f"Zora agent initialized with {provider.name()}")
@@ -485,15 +518,16 @@ def get_settings():
     config = _load_config()
     ai_config = config.get("ai", {})
     agent = _get_agent()
+    provider_name = ai_config.get("provider", "ollama")
+    provider_env = _provider_env_var(provider_name)
+    has_runtime_key = bool(_runtime_api_keys.get(provider_name))
+
     return {
-        "provider": ai_config.get("provider", "ollama"),
+        "provider": provider_name,
         "model": ai_config.get("model", ""),
         "has_api_key": bool(
-            ai_config.get("api_key")
-            or os.environ.get("ANTHROPIC_API_KEY")
-            or os.environ.get("OPENAI_API_KEY")
-            or os.environ.get("XAI_API_KEY")
-            or os.environ.get("GROQ_API_KEY")
+            has_runtime_key
+            or (provider_env and os.environ.get(provider_env))
         ),
         "base_url": ai_config.get("base_url", ""),
         "available_providers": ["ollama", "claude", "openai", "grok", "groq", "custom"],
@@ -519,8 +553,24 @@ def update_settings(settings: SettingsUpdate):
         config["ai"]["provider"] = settings.provider
     if settings.model is not None:
         config["ai"]["model"] = settings.model
+    effective_provider = settings.provider or config["ai"].get("provider", "ollama")
     if settings.api_key is not None:
-        config["ai"]["api_key"] = settings.api_key
+        key = settings.api_key.strip()
+        # Do not persist secrets to config.json (runtime only)
+        if key:
+            _runtime_api_keys[effective_provider] = key
+        else:
+            _runtime_api_keys.pop(effective_provider, None)
+
+        env_var = _provider_env_var(effective_provider)
+        if env_var:
+            if key:
+                os.environ[env_var] = key
+            else:
+                os.environ.pop(env_var, None)
+
+    # Ensure no plaintext api_key survives in config
+    config["ai"].pop("api_key", None)
     if settings.base_url is not None:
         config["ai"]["base_url"] = settings.base_url
 

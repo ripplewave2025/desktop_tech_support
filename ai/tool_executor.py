@@ -29,12 +29,26 @@ class ToolExecutor:
         self._pm = ProcessManager()
 
         # Destructive PowerShell patterns that should be blocked
-        self._ps_blocklist = [
-            "Remove-Item", "Format-Volume", "Clear-Disk",
-            "Set-ExecutionPolicy", "Remove-Computer",
-            "Clear-RecycleBin", "Stop-Computer", "Restart-Computer",
-            "Reset-Computer", "Uninstall-", "reg delete",
-        ]
+        self._powershell_allowlist = {
+            "Get-Process",
+            "Get-Service",
+            "Get-ComputerInfo",
+            "Get-NetAdapter",
+            "Get-NetIPConfiguration",
+            "Get-DnsClientServerAddress",
+            "Get-Volume",
+            "Get-PSDrive",
+            "Get-WinEvent",
+            "Get-EventLog",
+            "ipconfig",
+            "ping",
+            "nslookup",
+            "tracert",
+            "netstat",
+            "tasklist",
+            "whoami",
+            "winget",
+        }
 
         # Vision model for screen analysis
         self._vision_model = os.environ.get("ZORA_VISION_MODEL", "moondream")
@@ -492,12 +506,18 @@ class ToolExecutor:
 
     def _tool_run_powershell(self, args: Dict) -> Dict:
         """Execute a PowerShell command with safety checks."""
-        command = args["command"]
+        command = args["command"].strip()
+        if not command:
+            return {"error": "Blocked: empty command"}
 
-        # Safety: block destructive commands
-        for blocked in self._ps_blocklist:
-            if blocked.lower() in command.lower():
-                return {"error": f"Blocked: command contains '{blocked}' (safety restriction)"}
+        # Safety: allowlist top-level command only
+        first_token = command.split()[0]
+        normalized = first_token.lstrip("./").split("\\")[-1]
+        if normalized not in self._powershell_allowlist:
+            return {
+                "error": "Blocked: command is not in allowlist",
+                "allowed_commands": sorted(self._powershell_allowlist),
+            }
 
         try:
             result = subprocess.run(
