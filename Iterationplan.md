@@ -48,30 +48,30 @@
 - [x] 158 passing tests
 - [x] Full git commit + push (`0a6f7d4`)
 
-## v2.1 — Multi-API + Tool Download (IN PROGRESS)
+## v2.1 — Multi-API + Tool Download (COMPLETE)
 
-- [x] Multi-provider support — 6 providers now:
-  - [x] Ollama (local, free, default)
-  - [x] Claude (Anthropic API)
-  - [x] OpenAI (GPT-4o)
-  - [x] Grok (xAI — OpenAI-compatible)
-  - [x] Groq (fast inference — OpenAI-compatible)
-  - [x] Custom (any OpenAI-compatible endpoint)
-- [x] Updated provider_factory.py with PROVIDER_DEFAULTS for all 6
-- [x] Updated openai_provider.py with base_url support
-- [x] Updated SettingsPanel.jsx — all 6 providers in dropdown with placeholders
-- [x] Updated server.py — all providers + env var detection
-- [x] Tool auto-download from GitHub
-  - [x] `download_tool` tool definition in tools.py
-  - [x] `_tool_download_tool()` handler in tool_executor.py
-  - [x] Trusted repo allowlist for security
-  - [x] GitHub Releases API integration
-  - [x] Auto-extract ZIPs to %LOCALAPPDATA%\Zora\tools\
-- [x] React UI rebuilt (npm run build)
-- [ ] Update documentation (WHATS_DONE.md, Antigravitywork.md, this file)
-- [ ] Rebuild .exe with v2.1 changes
-- [ ] Test .exe launch with cloud API keys
-- [ ] Git commit + push v2.1
+- [x] Multi-provider support — 6 providers
+- [x] Updated provider_factory.py, openai_provider.py, SettingsPanel.jsx, server.py
+- [x] Tool auto-download from GitHub (trusted repos, releases API, ZIP extract)
+- [x] React UI rebuilt, .exe rebuilt, git commit + push
+- [x] GitHub Release v2.1.0 created with .exe
+
+## v2.2 — Full Desktop Assistant (COMPLETE)
+
+- [x] Merged Codex security PR (CORS, runtime API keys, PS allowlist)
+- [x] Expanded PowerShell allowlist (18 → 80+ commands)
+- [x] Desktop assistant tools — 6 new tools (30 total):
+  - [x] `send_email` — Outlook COM or mailto: fallback
+  - [x] `manage_files` — list/move/copy/rename/find/delete/get_size/organize_by_type
+  - [x] `open_url` — Open URLs in default browser
+  - [x] `clipboard` — Read/write system clipboard
+  - [x] `remember` — Persistent notes/reminders/follow-ups (JSON)
+  - [x] `notify` — Windows toast notifications
+- [x] Rewritten agent system prompt for full desktop assistant
+- [x] Repo cleanup — removed local config, old specs from tracking
+- [x] All tests passing, UI rebuilt, .exe rebuilt (78MB)
+- [x] Updated docs (WHATS_DONE.md, Antigravitywork.md, this file)
+- [ ] Git commit + push v2.2
 
 ## v3.0 — Intelligence Upgrade (PLANNED)
 
@@ -112,6 +112,7 @@
 | v1.0 | DONE | CLI .exe with 8 diagnostic modules |
 | v1.5 | DONE | AI chat + React UI + Computer Use tools |
 | v2.0 | DONE | Flow diagnostics, monitoring, remediation, installer |
-| v2.1 | IN PROGRESS | Multi-API (6 providers), GitHub tool download |
+| v2.1 | DONE | Multi-API (6 providers), GitHub tool download |
+| v2.2 | DONE | Desktop assistant: email, files, clipboard, memory, notifications |
 | v3.0 | PLANNED | ShowUI vision, voice I/O, multi-agent, SQLite memory |
 | v4.0 | PLANNED | OEM integration, family dashboard, plugins |

@@ -34,3 +34,12 @@ ui/src-tauri/target/
 
 # Pytest
 .pytest_cache/
+
+# Claude Code local config (user-specific permissions)
+.claude/settings.local.json
+
+# Build artifacts
+file_version_info.txt
+
+# Runtime data
+tickets/

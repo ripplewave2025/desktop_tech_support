@@ -60,6 +60,19 @@
 - **24 AI tools** (up from 23) — added `download_tool`
 - **Windowed .exe fix** — stdout/stderr redirect to log file when console=False
 
+### v2.2 Desktop Assistant (NEW — Mar 2, 2026)
+- **Merged Codex security PR** — CORS lockdown, runtime-only API keys, PowerShell allowlist
+- **6 new desktop assistant tools** (30 AI tools total):
+  - **send_email** — Draft emails via Outlook COM or mailto: fallback (never auto-sends)
+  - **manage_files** — List, move, copy, rename, find, delete, get_size, organize_by_type
+  - **open_url** — Open websites in default browser
+  - **clipboard** — Read/write system clipboard
+  - **remember** — Persistent notes, reminders, follow-ups across sessions
+  - **notify** — Windows toast notifications
+- **Expanded PowerShell allowlist** — 80+ commands covering all remediation, diagnostics, and assistant needs
+- **Rewritten system prompt** — covers full desktop assistant use cases, guides AI for non-tech users
+- **Repo cleanup** — removed local config, old specs, dev diaries from git tracking
+
 ## Architecture
 
 ```
@@ -68,10 +81,10 @@ Layer 1: PERCEPTION        Layer 2: UNDERSTANDING     Layer 3: REASONING
   tool_executor.py           tools.py (tool matching)   flow_engine.py (YAML trees)
   monitoring/watcher.py
 
-Layer 4: ACTION            Layer 5: LEARNING (v3.0)
-  tool_executor.py           (planned: SQLite memory)
-  flow_actions.py
-  remediation/library.py
+Layer 4: ACTION            Layer 5: MEMORY
+  tool_executor.py           remember tool → notes.json
+  flow_actions.py            (%LOCALAPPDATA%\Zora\memory\)
+  remediation/library.py     (planned: SQLite upgrade)
 ```
 
 ## File Count

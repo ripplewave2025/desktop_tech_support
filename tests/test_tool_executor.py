@@ -124,17 +124,17 @@ class TestPowerShellTool(unittest.TestCase):
         self.assertEqual(result["returncode"], 0)
 
     def test_powershell_blocks_destructive(self):
-        result = run_async(self.executor.execute("run_powershell", {"command": "Remove-Item C:\\important"}))
-        self.assertIn("error", result)
-        self.assertIn("Blocked", result["error"])
-
-    def test_powershell_blocks_format(self):
         result = run_async(self.executor.execute("run_powershell", {"command": "Format-Volume -DriveLetter C"}))
         self.assertIn("error", result)
         self.assertIn("Blocked", result["error"])
 
-    def test_powershell_blocks_restart(self):
+    def test_powershell_blocks_restart_computer(self):
         result = run_async(self.executor.execute("run_powershell", {"command": "Restart-Computer"}))
+        self.assertIn("error", result)
+        self.assertIn("Blocked", result["error"])
+
+    def test_powershell_blocks_stop_computer(self):
+        result = run_async(self.executor.execute("run_powershell", {"command": "Stop-Computer"}))
         self.assertIn("error", result)
         self.assertIn("Blocked", result["error"])
 

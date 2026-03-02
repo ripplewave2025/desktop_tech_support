@@ -554,6 +554,188 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    # ─── Desktop Assistant: Email ────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "send_email",
+            "description": (
+                "Send an email on behalf of the user. Uses Outlook if installed, "
+                "otherwise uses SMTP. The user will be shown the email content "
+                "and must confirm before it's actually sent."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "to": {
+                        "type": "string",
+                        "description": "Recipient email address (comma-separated for multiple)",
+                    },
+                    "subject": {
+                        "type": "string",
+                        "description": "Email subject line",
+                    },
+                    "body": {
+                        "type": "string",
+                        "description": "Email body text",
+                    },
+                    "cc": {
+                        "type": "string",
+                        "description": "Optional CC recipients (comma-separated)",
+                    },
+                },
+                "required": ["to", "subject", "body"],
+            },
+        },
+    },
+    # ─── Desktop Assistant: File Management ──────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_files",
+            "description": (
+                "Organize, move, copy, rename, or list files and folders. "
+                "Use this when the user asks to clean up their desktop, "
+                "organize downloads, find files, or move things around."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["list", "move", "copy", "rename", "create_folder",
+                                 "delete", "find", "get_size", "organize_by_type"],
+                        "description": "What to do with files",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "File or folder path (use ~ for user home, e.g. ~/Desktop)",
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "Destination path (for move/copy)",
+                    },
+                    "pattern": {
+                        "type": "string",
+                        "description": "File pattern for find/list (e.g. '*.pdf', '*.jpg')",
+                    },
+                    "new_name": {
+                        "type": "string",
+                        "description": "New name (for rename)",
+                    },
+                },
+                "required": ["action", "path"],
+            },
+        },
+    },
+    # ─── Desktop Assistant: Open URL / Browser ───────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "open_url",
+            "description": (
+                "Open a URL or website in the user's default browser. "
+                "Use for navigating to support pages, downloads, tutorials, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "URL to open (e.g. 'https://support.microsoft.com')",
+                    },
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    # ─── Desktop Assistant: Clipboard ────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "clipboard",
+            "description": (
+                "Read from or write to the system clipboard. "
+                "Use to copy text for the user, read what they copied, etc."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["read", "write"],
+                        "description": "'read' to get clipboard content, 'write' to set it",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Text to write to clipboard (only for 'write')",
+                    },
+                },
+                "required": ["action"],
+            },
+        },
+    },
+    # ─── Desktop Assistant: Reminders & Notes ────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "remember",
+            "description": (
+                "Save or recall notes, reminders, and follow-ups. "
+                "Zora remembers things for the user across sessions — "
+                "like 'remind me to update drivers tomorrow' or 'save this error code'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["save", "list", "search", "delete"],
+                        "description": "What to do with memory",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "What to remember (for 'save') or search term (for 'search')",
+                    },
+                    "category": {
+                        "type": "string",
+                        "enum": ["reminder", "note", "follow_up", "error_code", "preference"],
+                        "description": "Category of the memory (default: note)",
+                    },
+                    "due": {
+                        "type": "string",
+                        "description": "When to remind (for reminders): 'tomorrow', '2024-12-25', 'next week'",
+                    },
+                },
+                "required": ["action"],
+            },
+        },
+    },
+    # ─── Desktop Assistant: Notification / Toast ─────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "notify",
+            "description": (
+                "Show a Windows notification/toast message to the user. "
+                "Use for completed tasks, reminders, or important alerts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Notification title",
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Notification body text",
+                    },
+                },
+                "required": ["title", "message"],
+            },
+        },
+    },
 ]
 
 

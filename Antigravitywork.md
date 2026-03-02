@@ -125,7 +125,24 @@
 - Fixed windowed .exe crash — `launcher.py` now redirects stdout/stderr to log file
 - Rebuilt React UI (`npm run build`)
 - Updated WHATS_DONE.md, Iterationplan.md, this file
-- .exe rebuild pending
+- .exe rebuilt (78MB)
+
+### Mar 2, 2026 ~7PM — v2.2: Full Desktop Assistant (Claude Code)
+- Merged Codex PR #1 (CORS lockdown, runtime API keys, PowerShell allowlist)
+- Expanded PowerShell allowlist from 18 to 80+ commands (covers all remediation/flow needs)
+- Added 6 new desktop assistant tools (30 AI tools total):
+  - `send_email` — Draft via Outlook COM or mailto: fallback
+  - `manage_files` — move/copy/rename/find/organize_by_type/delete/get_size
+  - `open_url` — Open URLs in default browser
+  - `clipboard` — Read/write system clipboard
+  - `remember` — Persistent notes/reminders/follow-ups (JSON in %LOCALAPPDATA%\Zora\memory\)
+  - `notify` — Windows toast notifications
+- Rewrote agent system prompt — now covers full desktop assistant use cases
+- Cleaned up repo: removed local config, old build specs, dev diaries from git tracking
+- Updated .gitignore
+- Updated README.md for open-source contributors
+- All tests passing, UI rebuilt, .exe rebuilt (78MB)
+- Files changed: ai/tools.py, ai/tool_executor.py, ai/agent.py, .gitignore, tests/test_tool_executor.py
 
 ---
 
@@ -134,7 +151,7 @@
 ### What works
 - dist/Zora.exe (93MB) — double-click, setup wizard runs, chat works in browser
 - dist/ZoraTechSupport.exe (67MB) — CLI-only older version
-- 24 AI tools (13 original + 8 Computer Use + run_flow_diagnostic + apply_remediation + download_tool)
+- 30 AI tools (13 original + 8 Computer Use + 3 diagnostic + download_tool + 6 desktop assistant)
 - 6 AI providers: Ollama (default), Claude, OpenAI, Grok, Groq, Custom
 - Floating glassmorphism chat widget (React, dev mode via npm run dev)
 - FastAPI backend with SSE streaming

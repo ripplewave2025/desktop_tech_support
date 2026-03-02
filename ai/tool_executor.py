@@ -28,26 +28,57 @@ class ToolExecutor:
         self._auto = automation
         self._pm = ProcessManager()
 
-        # Destructive PowerShell patterns that should be blocked
+        # PowerShell allowlist — commands Zora is permitted to run.
+        # Covers diagnostics, remediation, flow actions, and desktop assistant tasks.
         self._powershell_allowlist = {
-            "Get-Process",
-            "Get-Service",
-            "Get-ComputerInfo",
-            "Get-NetAdapter",
-            "Get-NetIPConfiguration",
-            "Get-DnsClientServerAddress",
-            "Get-Volume",
-            "Get-PSDrive",
-            "Get-WinEvent",
-            "Get-EventLog",
-            "ipconfig",
-            "ping",
-            "nslookup",
-            "tracert",
-            "netstat",
-            "tasklist",
-            "whoami",
-            "winget",
+            # --- Read-only / info gathering ---
+            "Get-Process", "Get-Service", "Get-ComputerInfo",
+            "Get-NetAdapter", "Get-NetIPConfiguration", "Get-DnsClientServerAddress",
+            "Get-Volume", "Get-PSDrive", "Get-WinEvent", "Get-EventLog",
+            "Get-CimInstance", "Get-ItemProperty", "Get-Content",
+            "Get-Printer", "Get-PrinterPort", "Get-PrintJob",
+            "Get-NetIPAddress", "Get-NetRoute", "Get-NetFirewallProfile",
+            "Get-MpComputerStatus", "Get-MpThreatDetection",
+            "Get-ChildItem", "Get-Item", "Get-Date", "Get-Clipboard",
+            "Get-AudioDevice", "Get-StartApps", "Get-AppxPackage",
+            "Get-WindowsOptionalFeature", "Get-HotFix",
+            "Test-NetConnection", "Test-Path", "Test-Connection",
+            "Measure-Object", "Select-Object", "Where-Object",
+            "Sort-Object", "Format-List", "Format-Table",
+            "Out-File", "Out-String",
+            "ipconfig", "ping", "nslookup", "tracert", "netstat",
+            "tasklist", "whoami", "winget", "systeminfo", "hostname",
+            "cmdkey", "klist",
+            # --- Service management (for fixing audio, print, network) ---
+            "Restart-Service", "Start-Service", "Stop-Service",
+            # --- Remediation commands ---
+            "Start-MpScan",                    # Defender scan
+            "Set-DnsClientServerAddress",      # Fix DNS
+            "Set-NetFirewallProfile",          # Firewall toggle
+            "Set-ItemProperty",                # Registry tweaks (dark mode, proxy, UAC check)
+            "Enable-NetAdapter", "Disable-NetAdapter",  # Network adapter reset
+            "Start-Process",                   # Open settings pages / apps
+            "Remove-Item",                     # Temp file cleanup (restricted by safety prompt)
+            "Clear-DnsClientCache",            # DNS flush
+            # --- System maintenance ---
+            "sfc", "DISM", "chkdsk",           # System repair
+            "cleanmgr", "wsreset.exe",         # Cleanup utilities
+            "powercfg",                        # Power management
+            "msdt.exe",                        # Built-in troubleshooters
+            "rundll32",                        # Print test page, etc.
+            "mmsys.cpl", "devmgmt.msc", "printmanagement.msc",  # Control panel applets
+            "sndvol.exe", "taskmgr",           # System utilities
+            # --- Network ---
+            "netsh",                           # Network config (wlan, firewall, winsock)
+            "rasdial",                         # VPN disconnect
+            # --- Desktop assistant: file & app management ---
+            "Copy-Item", "Move-Item", "Rename-Item", "New-Item",
+            "Compress-Archive", "Expand-Archive",
+            "Set-Clipboard",
+            "Start-ScheduledTask", "Get-ScheduledTask",
+            # --- Desktop assistant: email via Outlook COM ---
+            "New-Object",                      # COM object creation (Outlook.Application)
+            "Send-MailMessage",                # SMTP email
         }
 
         # Vision model for screen analysis
@@ -829,3 +860,344 @@ class ToolExecutor:
                 "error": str(e),
                 "suggestion": "Try 'winget install' via run_powershell instead.",
             }
+
+    # ─── Desktop Assistant: Email ──────────────────────────────
+
+    def _tool_send_email(self, args: Dict) -> Dict:
+        """Send an email via Outlook COM or mailto: fallback."""
+        to = args["to"]
+        subject = args["subject"]
+        body = args["body"]
+        cc = args.get("cc", "")
+
+        # Try Outlook COM first (most common on Windows)
+        try:
+            import win32com.client
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            mail = outlook.CreateItem(0)
+            mail.To = to
+            mail.Subject = subject
+            mail.Body = body
+            if cc:
+                mail.CC = cc
+            # Display for user review instead of auto-send
+            mail.Display(True)
+            return {
+                "status": "draft_opened",
+                "method": "outlook",
+                "to": to,
+                "subject": subject,
+                "message": "Email draft opened in Outlook. Please review and click Send.",
+            }
+        except Exception:
+            pass
+
+        # Fallback: open default mail client via mailto: link
+        try:
+            import urllib.parse
+            params = {"subject": subject, "body": body}
+            if cc:
+                params["cc"] = cc
+            mailto_url = f"mailto:{to}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
+            os.startfile(mailto_url)
+            return {
+                "status": "mailto_opened",
+                "method": "default_mail_client",
+                "to": to,
+                "subject": subject,
+                "message": "Email draft opened in your default mail app. Review and send.",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Could not open email: {e}",
+                "suggestion": "Copy the text and paste it into your email app manually.",
+                "email_content": {"to": to, "subject": subject, "body": body},
+            }
+
+    # ─── Desktop Assistant: File Management ────────────────────
+
+    def _tool_manage_files(self, args: Dict) -> Dict:
+        """Organize, move, copy, rename, find files."""
+        import glob as glob_mod
+        import shutil
+
+        action = args["action"]
+        path = args["path"]
+
+        # Expand ~ to user home
+        if path.startswith("~"):
+            path = os.path.expanduser(path)
+        path = os.path.abspath(path)
+
+        try:
+            if action == "list":
+                pattern = args.get("pattern", "*")
+                entries = []
+                search_path = os.path.join(path, pattern)
+                for item in glob_mod.glob(search_path):
+                    stat = os.stat(item)
+                    entries.append({
+                        "name": os.path.basename(item),
+                        "path": item,
+                        "is_dir": os.path.isdir(item),
+                        "size_mb": round(stat.st_size / (1024 * 1024), 2) if not os.path.isdir(item) else None,
+                        "modified": datetime.datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    })
+                entries.sort(key=lambda x: x["name"].lower())
+                return {"action": "list", "path": path, "count": len(entries), "entries": entries[:50]}
+
+            elif action == "find":
+                pattern = args.get("pattern", "*")
+                found = []
+                for root, dirs, files in os.walk(path):
+                    import fnmatch as fnm
+                    for f in files:
+                        if fnm.fnmatch(f.lower(), pattern.lower()):
+                            fp = os.path.join(root, f)
+                            found.append({
+                                "name": f, "path": fp,
+                                "size_mb": round(os.path.getsize(fp) / (1024 * 1024), 2),
+                            })
+                    if len(found) >= 50:
+                        break
+                return {"action": "find", "pattern": pattern, "path": path,
+                        "count": len(found), "results": found}
+
+            elif action == "move":
+                dest = args.get("destination", "")
+                if not dest:
+                    return {"error": "Destination required for move"}
+                dest = os.path.expanduser(dest) if dest.startswith("~") else dest
+                dest = os.path.abspath(dest)
+                shutil.move(path, dest)
+                return {"action": "move", "from": path, "to": dest, "status": "done"}
+
+            elif action == "copy":
+                dest = args.get("destination", "")
+                if not dest:
+                    return {"error": "Destination required for copy"}
+                dest = os.path.expanduser(dest) if dest.startswith("~") else dest
+                dest = os.path.abspath(dest)
+                if os.path.isdir(path):
+                    shutil.copytree(path, dest)
+                else:
+                    shutil.copy2(path, dest)
+                return {"action": "copy", "from": path, "to": dest, "status": "done"}
+
+            elif action == "rename":
+                new_name = args.get("new_name", "")
+                if not new_name:
+                    return {"error": "new_name required for rename"}
+                new_path = os.path.join(os.path.dirname(path), new_name)
+                os.rename(path, new_path)
+                return {"action": "rename", "from": path, "to": new_path, "status": "done"}
+
+            elif action == "create_folder":
+                os.makedirs(path, exist_ok=True)
+                return {"action": "create_folder", "path": path, "status": "done"}
+
+            elif action == "delete":
+                dangerous = ["windows", "system32", "program files", "programdata"]
+                if any(d in path.lower() for d in dangerous):
+                    return {"error": f"Blocked: refusing to delete system path '{path}'"}
+                if os.path.isdir(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+                return {"action": "delete", "path": path, "status": "done"}
+
+            elif action == "get_size":
+                if os.path.isfile(path):
+                    size = os.path.getsize(path)
+                else:
+                    size = sum(
+                        os.path.getsize(os.path.join(r, f))
+                        for r, _, files in os.walk(path) for f in files
+                    )
+                return {"action": "get_size", "path": path,
+                        "size_mb": round(size / (1024 * 1024), 2)}
+
+            elif action == "organize_by_type":
+                if not os.path.isdir(path):
+                    return {"error": f"'{path}' is not a folder"}
+                type_map = {
+                    "Images": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".svg", ".webp", ".ico"},
+                    "Documents": {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+                                  ".txt", ".csv", ".rtf"},
+                    "Videos": {".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv"},
+                    "Music": {".mp3", ".wav", ".flac", ".aac", ".ogg", ".wma"},
+                    "Archives": {".zip", ".rar", ".7z", ".tar", ".gz"},
+                    "Programs": {".exe", ".msi", ".bat", ".cmd", ".ps1"},
+                }
+                moved = {}
+                for f in os.listdir(path):
+                    fp = os.path.join(path, f)
+                    if os.path.isdir(fp):
+                        continue
+                    ext = os.path.splitext(f)[1].lower()
+                    folder = "Other"
+                    for cat, exts in type_map.items():
+                        if ext in exts:
+                            folder = cat
+                            break
+                    dest_dir = os.path.join(path, folder)
+                    os.makedirs(dest_dir, exist_ok=True)
+                    shutil.move(fp, os.path.join(dest_dir, f))
+                    moved[folder] = moved.get(folder, 0) + 1
+                return {"action": "organize_by_type", "path": path, "moved": moved,
+                        "status": "done"}
+
+            else:
+                return {"error": f"Unknown action: {action}"}
+
+        except Exception as e:
+            return {"error": str(e), "action": action, "path": path}
+
+    # ─── Desktop Assistant: Open URL ───────────────────────────
+
+    def _tool_open_url(self, args: Dict) -> Dict:
+        """Open a URL in the user's default browser."""
+        import webbrowser
+        url = args["url"]
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        webbrowser.open(url)
+        return {"status": "opened", "url": url}
+
+    # ─── Desktop Assistant: Clipboard ──────────────────────────
+
+    def _tool_clipboard(self, args: Dict) -> Dict:
+        """Read or write to the system clipboard."""
+        action = args["action"]
+        try:
+            if action == "read":
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", "Get-Clipboard"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                return {"action": "read", "content": result.stdout.strip()}
+            elif action == "write":
+                text = args.get("text", "")
+                escaped = text.replace("'", "''")
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     f"Set-Clipboard -Value '{escaped}'"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                return {"action": "write", "status": "done", "length": len(text)}
+            else:
+                return {"error": f"Unknown clipboard action: {action}"}
+        except Exception as e:
+            return {"error": str(e)}
+
+    # ─── Desktop Assistant: Remember / Notes / Follow-ups ──────
+
+    def _tool_remember(self, args: Dict) -> Dict:
+        """Save, list, search, or delete persistent notes and reminders."""
+        action = args["action"]
+        memory_dir = os.path.join(
+            os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+            "Zora", "memory",
+        )
+        os.makedirs(memory_dir, exist_ok=True)
+        memory_file = os.path.join(memory_dir, "notes.json")
+
+        # Load existing notes
+        notes = []
+        if os.path.exists(memory_file):
+            try:
+                with open(memory_file, "r", encoding="utf-8") as f:
+                    notes = json.load(f)
+            except Exception:
+                notes = []
+
+        def _save():
+            with open(memory_file, "w", encoding="utf-8") as f:
+                json.dump(notes, f, indent=2, default=str)
+
+        if action == "save":
+            content = args.get("content", "")
+            if not content:
+                return {"error": "Nothing to save — 'content' is required."}
+            entry = {
+                "id": len(notes) + 1,
+                "content": content,
+                "category": args.get("category", "note"),
+                "due": args.get("due"),
+                "created": datetime.datetime.now().isoformat(),
+                "done": False,
+            }
+            notes.append(entry)
+            _save()
+            return {"action": "save", "entry": entry, "total_notes": len(notes)}
+
+        elif action == "list":
+            category = args.get("category")
+            filtered = notes
+            if category:
+                filtered = [n for n in notes if n.get("category") == category]
+            due_now = []
+            others = []
+            now = datetime.datetime.now().isoformat()
+            for n in filtered:
+                if n.get("due") and n["due"] <= now and not n.get("done"):
+                    due_now.append(n)
+                else:
+                    others.append(n)
+            return {"action": "list", "due_now": due_now, "notes": others[-20:],
+                    "total": len(filtered)}
+
+        elif action == "search":
+            query = args.get("content", "").lower()
+            matches = [n for n in notes if query in n.get("content", "").lower()]
+            return {"action": "search", "query": query, "results": matches,
+                    "count": len(matches)}
+
+        elif action == "delete":
+            content = args.get("content", "")
+            if content.isdigit():
+                note_id = int(content)
+                notes = [n for n in notes if n.get("id") != note_id]
+            else:
+                notes = [n for n in notes
+                         if content.lower() not in n.get("content", "").lower()]
+            _save()
+            return {"action": "delete", "remaining": len(notes)}
+
+        else:
+            return {"error": f"Unknown memory action: {action}"}
+
+    # ─── Desktop Assistant: Notification Toast ─────────────────
+
+    def _tool_notify(self, args: Dict) -> Dict:
+        """Show a Windows notification toast."""
+        title = args["title"]
+        message = args["message"]
+
+        try:
+            # Try win10toast first
+            from win10toast import ToastNotifier
+            toaster = ToastNotifier()
+            toaster.show_toast(title, message, duration=5, threaded=True)
+            return {"status": "shown", "method": "win10toast", "title": title}
+        except ImportError:
+            pass
+
+        # Fallback: PowerShell balloon notification
+        try:
+            ps_script = (
+                'Add-Type -AssemblyName System.Windows.Forms; '
+                '$n = New-Object System.Windows.Forms.NotifyIcon; '
+                '$n.Icon = [System.Drawing.SystemIcons]::Information; '
+                '$n.Visible = $true; '
+                f'$n.ShowBalloonTip(5000, "{title}", "{message}", '
+                '"Info"); Start-Sleep -Seconds 6; $n.Dispose()'
+            )
+            subprocess.Popen(
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            return {"status": "shown", "method": "balloon", "title": title}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
