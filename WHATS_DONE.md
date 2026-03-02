@@ -1,4 +1,7 @@
-# Zora v2.0 — What's Done, What's Next
+# Zora v2.1 — What's Done, What's Next
+
+> **Living doc.** Updated every session so all agents stay in sync.
+> Last updated: Mar 2, 2026
 
 ## What's Built (Working Now)
 
@@ -13,7 +16,7 @@
 - **Ollama local AI** — qwen2.5:7b for chat, moondream for vision. Zero cloud, zero cost
 - **Witty Grok-style personality** — puns, emojis, short punchy messages
 
-### v2.0 Enhancements (NEW)
+### v2.0 Enhancements
 - **Flow-based diagnostics** — 5 YAML decision trees that branch like real tech support
   - Internet Slow (8 steps, 4 branches)
   - No Sound (7 steps, 3 branches)
@@ -39,6 +42,23 @@
   - Firewall exception for localhost:8000
 - **23 AI tools** (up from 21) — added `run_flow_diagnostic` and `apply_remediation`
 - **158 tests passing** (up from 93)
+
+### v2.1 Enhancements (NEW — Mar 2, 2026)
+- **Multi-provider AI support** — 6 providers now:
+  - **Ollama** (local, free, default)
+  - **Claude** (Anthropic API — needs ANTHROPIC_API_KEY)
+  - **OpenAI** (GPT-4o — needs OPENAI_API_KEY)
+  - **Grok** (xAI — needs XAI_API_KEY, OpenAI-compatible)
+  - **Groq** (fast inference — needs GROQ_API_KEY, OpenAI-compatible)
+  - **Custom** (any OpenAI-compatible endpoint — needs api_key + base_url)
+- **Provider factory** rewritten — all OpenAI-compatible providers share one code path
+- **Settings UI updated** — dropdown with all 6 providers, smart placeholders per provider
+- **Tool auto-download from GitHub** — Zora can download missing tools at runtime
+  - Trusted repo allowlist for security
+  - GitHub Releases API integration
+  - Auto-extract ZIPs to %LOCALAPPDATA%\Zora\tools\
+- **24 AI tools** (up from 23) — added `download_tool`
+- **Windowed .exe fix** — stdout/stderr redirect to log file when console=False
 
 ## Architecture
 
@@ -67,6 +87,19 @@ Layer 4: ACTION            Layer 5: LEARNING (v3.0)
 3. After setup, Zora opens in browser at `http://127.0.0.1:8000`
 4. System tray icon stays in background
 5. Requirements: Windows 10/11, ~4GB free space, internet for first setup only
+6. **Cloud AI option:** Set provider to Claude/OpenAI/Grok in Settings (needs API key)
+
+## What Changed in v2.1
+
+| File | Change |
+|------|--------|
+| `ai/provider_factory.py` | Rewritten — 6 providers, PROVIDER_DEFAULTS dict |
+| `ai/openai_provider.py` | Added `base_url` param for Grok/Groq/Custom |
+| `ai/tools.py` | Added `download_tool` definition (24 tools total) |
+| `ai/tool_executor.py` | Added TRUSTED_REPOS + `_tool_download_tool()` handler |
+| `api/server.py` | Updated providers list + env var checks |
+| `ui/src/components/SettingsPanel.jsx` | 6 providers in dropdown |
+| `launcher.py` | stdout/stderr fix for windowed .exe mode |
 
 ## What's Next (v3.0 Roadmap)
 1. **ShowUI 2B vision** — better screen understanding via Ollama (replaces moondream)

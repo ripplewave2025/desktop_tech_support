@@ -110,24 +110,43 @@
 - Pushed to GitHub
 - Created this Antigravitywork.md shared memory file
 
+### Mar 2, 2026 — v2.1: Multi-API + Tool Download (Claude Code)
+- Added 3 new AI providers: Grok (xAI), Groq, Custom (any OpenAI-compatible)
+  - Total providers now: Ollama, Claude, OpenAI, Grok, Groq, Custom
+  - All OpenAI-compatible providers share one code path via base_url
+- Rewrote `ai/provider_factory.py` — PROVIDER_DEFAULTS dict for all 6 providers
+- Updated `ai/openai_provider.py` — added `base_url` parameter
+- Updated `ui/src/components/SettingsPanel.jsx` — 6 providers in dropdown with smart placeholders
+- Updated `api/server.py` — all providers listed, XAI_API_KEY + GROQ_API_KEY env var checks
+- Added `download_tool` capability (24 AI tools total):
+  - `ai/tools.py` — new tool definition
+  - `ai/tool_executor.py` — TRUSTED_REPOS allowlist, GitHub Releases API, ZIP auto-extract
+  - Downloads to %LOCALAPPDATA%\Zora\tools\{repo}\
+- Fixed windowed .exe crash — `launcher.py` now redirects stdout/stderr to log file
+- Rebuilt React UI (`npm run build`)
+- Updated WHATS_DONE.md, Iterationplan.md, this file
+- .exe rebuild pending
+
 ---
 
 ## Current State (as of Mar 2, 2026)
 
 ### What works
-- dist/Zora.exe (92MB) — double-click, setup wizard runs, chat works in browser
+- dist/Zora.exe (93MB) — double-click, setup wizard runs, chat works in browser
 - dist/ZoraTechSupport.exe (67MB) — CLI-only older version
-- 23 AI tools (13 original + 8 Computer Use + run_flow_diagnostic + apply_remediation)
+- 24 AI tools (13 original + 8 Computer Use + run_flow_diagnostic + apply_remediation + download_tool)
+- 6 AI providers: Ollama (default), Claude, OpenAI, Grok, Groq, Custom
 - Floating glassmorphism chat widget (React, dev mode via npm run dev)
 - FastAPI backend with SSE streaming
-- Ollama integration (qwen2.5:7b chat, moondream vision)
+- Ollama integration (qwen2.5:7b chat, moondream for vision)
 - 5 YAML diagnostic flows, 52 remediation fixes, proactive monitoring
 - System tray icon, first-run setup wizard
+- GitHub tool auto-download capability
 - 158 tests passing
 
 ### What's NOT done yet
-- [ ] provider_factory.py — graceful Ollama auto-detect (partially done)
-- [ ] Tauri native build (needs Rust toolchain installed)
+- [ ] Rebuild .exe with v2.1 changes (multi-API, tool download)
+- [ ] Tauri native build (needs Rust toolchain — for real floating window)
 - [ ] Thinking/action indicators not verified with live AI
 - [ ] ShowUI 2B vision (better screen understanding, replaces moondream)
 - [ ] Voice I/O (whisper.cpp STT + Windows SAPI TTS)

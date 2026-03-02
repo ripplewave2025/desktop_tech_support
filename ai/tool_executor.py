@@ -678,3 +678,134 @@ class ToolExecutor:
             return {"error": "Remediation library not available"}
         except Exception as e:
             return {"error": f"Remediation failed: {e}", "fix_id": fix_id}
+
+    # ─── Tool Auto-Download from GitHub ───────────────────────
+
+    # Trusted repos that Zora is allowed to download from
+    TRUSTED_REPOS = {
+        "BleachBit/bleachbit",        # Disk cleanup
+        "henrypp/memreduct",          # Memory optimizer
+        "aria2/aria2",                # Download manager
+        "NirSoft",                    # Windows utilities (prefix match)
+        "microsoft/winget-cli",       # Windows package manager
+        "PowerShell/PowerShell",      # PowerShell updates
+        "Git-for-Windows/git",        # Git for Windows
+        "AveYo/MediaCreationTool.bat", # Windows Media Creation
+    }
+
+    def _tool_download_tool(self, args: Dict) -> Dict:
+        """Download and stage an open-source tool from GitHub releases."""
+        import urllib.request
+        import zipfile
+        import tempfile
+        import fnmatch
+
+        repo = args.get("repo", "")
+        reason = args.get("reason", "")
+        pattern = args.get("asset_pattern", "*.exe")
+
+        if not repo or "/" not in repo:
+            return {"error": f"Invalid repo format: '{repo}'. Use 'owner/repo' format."}
+
+        # Security: check trusted repos
+        is_trusted = any(
+            repo.startswith(tr) or repo == tr
+            for tr in self.TRUSTED_REPOS
+        )
+        if not is_trusted:
+            return {
+                "status": "blocked",
+                "reason": f"Repo '{repo}' is not in the trusted list. "
+                          f"For safety, Zora only downloads from verified repos. "
+                          f"Trusted: {', '.join(sorted(self.TRUSTED_REPOS))}",
+                "suggestion": "Use run_powershell with 'winget install' instead, "
+                              "or ask the user to manually download from GitHub.",
+            }
+
+        tool_dir = os.path.join(
+            os.environ.get("LOCALAPPDATA", tempfile.gettempdir()),
+            "Zora", "tools", repo.replace("/", "_"),
+        )
+        os.makedirs(tool_dir, exist_ok=True)
+
+        try:
+            # Get latest release info
+            api_url = f"https://api.github.com/repos/{repo}/releases/latest"
+            req = urllib.request.Request(api_url, headers={"User-Agent": "Zora/2.0"})
+            data = urllib.request.urlopen(req, timeout=15).read()
+            release = json.loads(data)
+
+            tag = release.get("tag_name", "unknown")
+            assets = release.get("assets", [])
+
+            if not assets:
+                return {
+                    "status": "no_assets",
+                    "repo": repo,
+                    "tag": tag,
+                    "message": f"Release {tag} has no downloadable assets.",
+                }
+
+            # Find matching asset
+            matched = None
+            for asset in assets:
+                name = asset["name"]
+                if fnmatch.fnmatch(name.lower(), pattern.lower()):
+                    # Prefer Windows assets
+                    if "win" in name.lower() or "x64" in name.lower() or name.endswith(".exe"):
+                        matched = asset
+                        break
+            if not matched:
+                # Fall back to first match
+                for asset in assets:
+                    if fnmatch.fnmatch(asset["name"].lower(), pattern.lower()):
+                        matched = asset
+                        break
+            if not matched:
+                matched = assets[0]  # Just take first asset
+
+            download_url = matched["browser_download_url"]
+            filename = matched["name"]
+            filepath = os.path.join(tool_dir, filename)
+
+            # Skip if already downloaded
+            if os.path.exists(filepath):
+                return {
+                    "status": "already_downloaded",
+                    "repo": repo,
+                    "tag": tag,
+                    "path": filepath,
+                    "filename": filename,
+                    "reason": reason,
+                }
+
+            # Download
+            urllib.request.urlretrieve(download_url, filepath)
+
+            # Auto-extract ZIP if needed
+            extracted_dir = None
+            if filename.endswith(".zip"):
+                extracted_dir = os.path.join(tool_dir, "extracted")
+                with zipfile.ZipFile(filepath, "r") as zf:
+                    zf.extractall(extracted_dir)
+
+            return {
+                "status": "downloaded",
+                "repo": repo,
+                "tag": tag,
+                "path": filepath,
+                "extracted": extracted_dir,
+                "filename": filename,
+                "size_mb": round(matched["size"] / (1024 * 1024), 1),
+                "reason": reason,
+                "message": f"Downloaded {filename} ({tag}) to {tool_dir}. "
+                           f"Use run_powershell to execute it if needed.",
+            }
+
+        except Exception as e:
+            return {
+                "status": "error",
+                "repo": repo,
+                "error": str(e),
+                "suggestion": "Try 'winget install' via run_powershell instead.",
+            }

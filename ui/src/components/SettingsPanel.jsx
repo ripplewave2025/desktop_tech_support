@@ -57,6 +57,9 @@ export function SettingsPanel({ isOpen, onClose }) {
               <option value="ollama">Ollama (Free, Local)</option>
               <option value="claude">Claude (Anthropic)</option>
               <option value="openai">OpenAI (GPT-4o)</option>
+              <option value="grok">Grok (xAI)</option>
+              <option value="groq">Groq (Fast)</option>
+              <option value="custom">Custom (OpenAI-compatible)</option>
             </select>
           </div>
 
@@ -67,9 +70,14 @@ export function SettingsPanel({ isOpen, onClose }) {
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder={
-                provider === 'ollama' ? 'llama3.1'
-                  : provider === 'claude' ? 'claude-sonnet-4-20250514'
-                    : 'gpt-4o'
+                {
+                  ollama: 'qwen2.5:7b',
+                  claude: 'claude-sonnet-4-20250514',
+                  openai: 'gpt-4o',
+                  grok: 'grok-3-latest',
+                  groq: 'llama-3.3-70b-versatile',
+                  custom: 'model-name',
+                }[provider] || 'model-name'
               }
             />
           </div>
@@ -81,19 +89,30 @@ export function SettingsPanel({ isOpen, onClose }) {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-..."
+                placeholder={
+                  provider === 'claude' ? 'sk-ant-...'
+                    : provider === 'grok' ? 'xai-...'
+                      : 'sk-...'
+                }
               />
             </div>
           )}
 
-          {provider === 'ollama' && (
+          {['ollama', 'grok', 'groq', 'custom'].includes(provider) && (
             <div className="settings-group">
               <label>Base URL</label>
               <input
                 type="text"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434"
+                placeholder={
+                  {
+                    ollama: 'http://localhost:11434',
+                    grok: 'https://api.x.ai/v1',
+                    groq: 'https://api.groq.com/openai/v1',
+                    custom: 'https://your-api.com/v1',
+                  }[provider] || ''
+                }
               />
             </div>
           )}

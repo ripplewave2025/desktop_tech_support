@@ -1,85 +1,158 @@
-# Desktop Tech Support
+# Zora — AI Desktop Companion
 
-**Windows Troubleshooting & Automation System**
-
-A standalone tech support engine for Windows that diagnoses and fixes common issues across 8 categories. Designed for non-technical users with a friendly narrator system.
+**Your personal Windows tech support assistant.** Zora diagnoses and fixes common PC problems using local AI — no cloud, no subscriptions, no data leaves your machine.
 
 ---
 
-## Quick Start
+## Get Started
 
+### Option A: Download the .exe (easiest)
+1. Download `Zora.exe` from [Releases](https://github.com/ripplewave2025/desktop_tech_support/releases)
+2. Double-click it — the setup wizard installs everything automatically
+3. Zora opens in your browser at `http://127.0.0.1:8000`
+
+### Option B: Run from source
 ```powershell
-# 1. Install dependencies
-python setup.py
+git clone https://github.com/ripplewave2025/desktop_tech_support.git
+cd desktop_tech_support
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 
-# 2. Run tech support
-python -m cli.main
+# Install & start Ollama (free local AI)
+# Download from https://ollama.com then:
+ollama pull qwen2.5:7b
+ollama pull moondream
+
+# Start Zora
+python launcher.py
 ```
 
-## Features
+### Option C: Use a cloud API instead of Ollama
+Zora supports multiple AI providers. Set your preferred provider in Settings:
 
+| Provider | Model | Env Variable | Cost |
+|----------|-------|-------------|------|
+| **Ollama** (default) | qwen2.5:7b | — | Free (local) |
+| **Claude** | claude-sonnet-4-20250514 | `ANTHROPIC_API_KEY` | Paid |
+| **OpenAI** | gpt-4o | `OPENAI_API_KEY` | Paid |
+| **Grok** | grok-3-latest | `XAI_API_KEY` | Paid |
+| **Groq** | llama-3.3-70b-versatile | `GROQ_API_KEY` | Free tier |
+| **Custom** | any | — | Varies |
+
+Set your API key as an environment variable or paste it in the Settings panel.
+
+---
+
+## What Zora Can Do
+
+### 24 AI Tools
+| Category | Tools |
+|----------|-------|
+| **Diagnostics** | Run 8 diagnostic modules (internet, audio, printer, display, hardware, software, files, security) |
+| **Computer Use** | Screenshot + vision analysis, mouse/keyboard control, screen highlight, OCR |
+| **Flow Diagnostics** | 5 decision-tree flows that branch like real tech support |
+| **Remediation** | 52 structured Windows fixes with risk levels, rollback, and verification |
+| **Monitoring** | Background CPU/RAM/disk/temp alerts, crash loop detection |
+| **System** | Process manager, PowerShell execution, window management, web search |
+| **Self-Upgrade** | Download tools from trusted GitHub repos at runtime |
+
+### 8 Diagnostic Categories
 | Category | What it checks |
 |----------|---------------|
-| **Printer** | Installed printers, default printer, status, queue, Print Spooler service |
-| **Internet** | Network adapters, DNS, ping, bandwidth, top network processes, WiFi signal |
-| **Software** | Frozen apps, Windows Update, startup programs, pending reboots, temp files |
-| **Hardware** | CPU, RAM, disk space (all drives), temperature, battery, uptime |
-| **Files** | Downloads folder size, Desktop clutter, Recycle Bin, large files (>500 MB) |
-| **Display** | Monitor detection, resolution, DPI scaling, graphics adapter/driver |
-| **Audio** | Sound devices, Windows Audio service, volume, AudioEndpointBuilder |
-| **Security** | Windows Defender, firewall, suspicious processes, suspicious ports, UAC |
+| **Internet** | Adapters, DNS, ping, bandwidth, WiFi signal, top network processes |
+| **Audio** | Sound devices, Windows Audio service, volume, endpoints |
+| **Printer** | Installed printers, status, queue, Print Spooler, default printer |
+| **Display** | Monitors, resolution, DPI, graphics adapter/driver |
+| **Hardware** | CPU, RAM, disk (all drives), temperature, battery, uptime |
+| **Software** | Frozen apps, Windows Update, startup programs, temp files |
+| **Files** | Downloads size, Desktop clutter, Recycle Bin, large files |
+| **Security** | Defender, firewall, suspicious processes/ports, UAC |
 
-## CLI Usage
+### 52 Remediation Fixes
+Structured fixes across 7 categories: Network (15), Audio (8), Display (6), Software (8), Hardware (5), Security (5), Printer (5). Each fix has risk level, verification, and rollback commands.
 
-```powershell
-# Interactive menu
-python -m cli.main
+---
 
-# Run specific diagnostic
-python -m cli.main --diagnose printer
-python -m cli.main --diagnose internet
-python -m cli.main --diagnose hardware
+## Architecture
 
-# Run all diagnostics
-python -m cli.main --diagnose all
+```
+Layer 1: PERCEPTION           Layer 2: UNDERSTANDING       Layer 3: REASONING
+  screen_capture.py             agent.py SYSTEM_PROMPT       agent.py (tool loop)
+  tool_executor.py              tools.py (tool matching)     flow_engine.py (YAML trees)
+  monitoring/watcher.py
 
-# Auto-fix mode (still asks permission per fix)
-python -m cli.main --diagnose all --auto-fix
-
-# JSON output for scripting
-python -m cli.main --diagnose hardware --json
-
-# System info only
-python -m cli.main --sysinfo
+Layer 4: ACTION               Layer 5: LEARNING (planned)
+  tool_executor.py              SQLite memory (v3.0)
+  flow_actions.py
+  remediation/library.py
 ```
 
-## Python API
+## Project Structure
 
-```python
-from core.automation import AutomationController
+```
+desktop_tech_support/
+  ai/                    # AI providers + agent logic
+    agent.py               Tool-calling chat loop
+    tools.py               24 tool definitions
+    tool_executor.py       Tool handlers (1600+ lines)
+    provider_factory.py    6-provider factory (Ollama/Claude/OpenAI/Grok/Groq/Custom)
+    ollama_provider.py     Ollama integration
+    claude_provider.py     Anthropic Claude
+    openai_provider.py     OpenAI + compatible APIs
+  api/                   # FastAPI backend
+    server.py              REST + SSE streaming endpoints
+  core/                  # Automation framework
+    automation.py          Unified controller API
+    safety.py              Emergency stop, rate limiter, blacklist
+    window_manager.py      Find/focus/resize windows
+    input_controller.py    Mouse + keyboard simulation
+    screen_capture.py      Screenshots + OCR
+    process_manager.py     Process lifecycle + system info
+  diagnostics/           # Diagnostic modules
+    base.py                BaseDiagnostic + narrator
+    internet.py, audio.py, printer.py, display.py,
+    hardware.py, software.py, files.py, security.py
+    flow_engine.py         YAML decision tree engine
+    flow_actions.py        23 reusable flow action functions
+    flows/                 5 YAML diagnostic trees
+  monitoring/            # Background system watcher
+    watcher.py             CPU/RAM/disk/temp/crash alerts
+    alerts.py              Alert model
+  remediation/           # Fix library
+    library.py             52 structured fixes
+  tray/                  # System tray
+    tray_icon.py           pystray icon + alert badges
+  ui/                    # React frontend (Vite)
+    src/App.jsx            Floating glassmorphism widget
+    src/components/        ChatWidget, SettingsPanel, AlertsPanel
+  launcher.py            # Entry point — setup wizard + server
+  config.json            # User configuration
+  Zora.spec              # PyInstaller build spec
+  installer/             # Inno Setup installer script
+  tests/                 # 158+ passing tests
+```
 
-ctrl = AutomationController()
+---
 
-# System info
-info = ctrl.get_system_info()
-print(f"CPU: {info.cpu_percent}%, RAM: {info.memory_percent}%")
+## Development
 
-# Window management
-windows = ctrl.list_windows()
-win = ctrl.find_window(title="Notepad")
-win.focus()
+```powershell
+# Backend
+cd desktop_tech_support
+.venv\Scripts\activate
+python -m uvicorn api.server:app --host 127.0.0.1 --port 8000 --reload
 
-# Process control
-procs = ctrl.list_processes(name_filter="chrome")
-ctrl.kill_process("notepad.exe")
+# Frontend (separate terminal)
+cd ui
+npm install
+npm run dev
 
-# Screen capture + OCR
-img = ctrl.capture_screen()
-text = ctrl.read_text()
+# Tests
+pytest tests/ -k "not TestDiagnosticTools" -v
 
-# Input simulation
-ctrl.type_text("Hello World")
-ctrl.hotkey("ctrl", "s")
+# Build .exe
+python -m PyInstaller Zora.spec --noconfirm
 ```
 
 ## Safety System
@@ -89,89 +162,39 @@ ctrl.hotkey("ctrl", "s")
 - **Blacklist**: System32, critical processes protected
 - **Confirmation Prompts**: High-risk actions require user permission
 - **Audit Logging**: Every action logged to `logs/automation_log.jsonl`
-
-## Running Tests
-
-```powershell
-# All tests
-python -m unittest discover -s tests -v
-
-# Specific test
-python -m unittest tests.test_safety -v
-python -m unittest tests.test_smoke -v
-```
-
-## Project Structure
-
-```
-desktop_tech_support/
-  core/               # Core automation framework
-    automation.py      #   Main controller (unified API)
-    safety.py          #   Emergency stop, rate limiter, blacklist
-    window_manager.py  #   Find, focus, resize windows
-    input_controller.py#   Mouse + keyboard simulation
-    screen_capture.py  #   Screenshots + OCR
-    process_manager.py #   Process lifecycle + system info
-  diagnostics/         # Tech support diagnostic modules
-    base.py            #   Narrator + BaseDiagnostic
-    printer.py         #   Printer troubleshooting
-    internet.py        #   Network diagnostics
-    software.py        #   App issues + updates
-    hardware.py        #   Performance + disk
-    files.py           #   File management
-    display.py         #   Monitor + resolution
-    audio.py           #   Sound devices
-    security.py        #   Defender + firewall
-  cli/                 # Command-line interface
-    main.py            #   Entry point + interactive menu
-  tests/               # Test suite (5 files)
-  setup.py             # One-click installer
-  config.json          # Configuration
-  requirements.txt     # Dependencies
-```
-
-## Documentation
-
-| Document | What it covers |
-|----------|---------------|
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to add diagnostics, code style, safety rules, areas needing help |
-| [LIMITATIONS.md](LIMITATIONS.md) | Known limitations per diagnostic, platform constraints, what this tool is NOT |
-| [SUPPORT_RESOURCES.md](docs/SUPPORT_RESOURCES.md) | Official support links for Dell, HP, Lenovo, ASUS, Acer, Surface, Samsung, MSI + printer brands |
-
-### Manufacturer Support Quick Links
-
-| Manufacturer | Support Site | Diagnostic Tool |
-|-------------|-------------|-----------------|
-| **Dell** | [support.dell.com](https://support.dell.com) | SupportAssist |
-| **HP** | [support.hp.com](https://support.hp.com) | HP Support Assistant |
-| **Lenovo** | [support.lenovo.com](https://support.lenovo.com) | Lenovo Vantage |
-| **ASUS** | [asus.com/support](https://www.asus.com/support/) | MyASUS |
-| **Acer** | [acer.com/support](https://www.acer.com/us-en/support) | Acer Care Center |
-| **Surface** | [support.microsoft.com/surface](https://support.microsoft.com/en-us/surface) | Surface Diagnostic Toolkit |
-
-> **Tip:** Run `python -m cli.main --sysinfo` or `Get-CimInstance Win32_ComputerSystem` in PowerShell to identify your manufacturer.
+- **Trusted Repos**: Tool downloads restricted to allowlisted GitHub repos
 
 ## Requirements
 
-- **Python 3.8+** on Windows 10/11
-- Dependencies: pywinauto, pynput, mss, pytesseract, opencv-python, psutil, pywin32, Pillow
-- Optional: [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) for text recognition
-
-## Known Limitations
-
-See [LIMITATIONS.md](LIMITATIONS.md) for full details. Key points:
-- Windows only (no macOS/Linux)
-- Some fixes require Administrator privileges
-- Security scan is heuristic-based, NOT a replacement for antivirus
-- Hardware diagnostics are software-level only (use manufacturer tools for hardware-level testing)
+- **Windows 10/11**
+- **Python 3.8+** (for running from source)
+- **~4GB free space** (for Ollama models)
+- **Internet** for first-time setup only (Ollama + model download)
+- Optional: API key for Claude/OpenAI/Grok/Groq
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Areas we need help with:
+See [CONTRIBUTING.md](CONTRIBUTING.md). We need help with:
 - Bluetooth & VPN diagnostics
-- Manufacturer-specific fix integration
-- Localization (narrator messages in other languages)
-- Zora avatar overlay (Phase 2)
+- Manufacturer-specific fix integration (Dell, HP, Lenovo CLI wrappers)
+- ShowUI 2B vision integration
+- Voice I/O (whisper.cpp + Windows SAPI)
+- Multi-agent routing (specialist agents per category)
+- Plugin system
+- Localization
+
+## Roadmap
+
+See [Iterationplan.md](Iterationplan.md) for the full tracker.
+
+| Version | Status | Highlights |
+|---------|--------|------------|
+| v1.0 | Done | CLI .exe, 8 diagnostics, safety system |
+| v1.5 | Done | AI chat, React UI, Computer Use tools |
+| v2.0 | Done | Flow diagnostics, monitoring, remediation, installer |
+| v2.1 | Done | 6 AI providers, GitHub tool download |
+| v3.0 | Planned | ShowUI vision, voice I/O, multi-agent, SQLite memory |
+| v4.0 | Planned | OEM integration, family dashboard, plugins |
 
 ## License
 

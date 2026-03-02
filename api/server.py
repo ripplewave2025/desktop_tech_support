@@ -486,15 +486,17 @@ def get_settings():
     ai_config = config.get("ai", {})
     agent = _get_agent()
     return {
-        "provider": ai_config.get("provider", "claude"),
+        "provider": ai_config.get("provider", "ollama"),
         "model": ai_config.get("model", ""),
         "has_api_key": bool(
             ai_config.get("api_key")
             or os.environ.get("ANTHROPIC_API_KEY")
             or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("XAI_API_KEY")
+            or os.environ.get("GROQ_API_KEY")
         ),
         "base_url": ai_config.get("base_url", ""),
-        "available_providers": ["claude", "openai", "ollama"],
+        "available_providers": ["ollama", "claude", "openai", "grok", "groq", "custom"],
         "active_provider": agent.provider_name if agent else "none",
     }
 

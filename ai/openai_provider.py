@@ -12,11 +12,12 @@ from .providers import AIProvider, AIMessage, AIResponse, ToolCall
 
 
 class OpenAIProvider(AIProvider):
-    """OpenAI API provider."""
+    """OpenAI-compatible API provider (works with OpenAI, Grok/xAI, Groq, etc.)."""
 
-    def __init__(self, api_key: str, model: str = "gpt-4o"):
+    def __init__(self, api_key: str, model: str = "gpt-4o", base_url: str = None):
         self._api_key = api_key
         self._model = model
+        self._base_url = base_url  # None = default OpenAI, or custom endpoint
         self._client = None
 
     def _get_client(self):
@@ -27,7 +28,10 @@ class OpenAIProvider(AIProvider):
                 raise ImportError(
                     "openai package required: pip install openai"
                 )
-            self._client = AsyncOpenAI(api_key=self._api_key)
+            kwargs = {"api_key": self._api_key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            self._client = AsyncOpenAI(**kwargs)
         return self._client
 
     def _convert_messages(self, messages: List[AIMessage]) -> List[Dict]:

@@ -521,6 +521,39 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    # ─── Tool Auto-Download ────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "download_tool",
+            "description": (
+                "Download and run an open-source tool from GitHub when built-in "
+                "tools aren't enough. Zora will download the tool to a temp folder, "
+                "run it, and clean up afterwards. Only downloads from trusted repos. "
+                "Examples: 'BleachBit/bleachbit' for disk cleanup, "
+                "'henrypp/memreduct' for memory optimization, "
+                "'mikeroyal/Windows-11-Guide' for registry tweaks."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "GitHub repo in 'owner/repo' format",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Why this tool is needed (shown to user)",
+                    },
+                    "asset_pattern": {
+                        "type": "string",
+                        "description": "Filename pattern to match in releases (e.g. '*.exe', '*portable*.zip')",
+                    },
+                },
+                "required": ["repo", "reason"],
+            },
+        },
+    },
 ]
 
 
