@@ -23,4 +23,14 @@ test_output.txt
 
 # Virtual environments
 venv/
+.venv/
 .env/
+
+# Node
+node_modules/
+
+# Tauri
+ui/src-tauri/target/
+
+# Pytest
+.pytest_cache/

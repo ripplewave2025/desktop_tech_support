@@ -1,0 +1,71 @@
+# WiFi Keeps Disconnecting — Diagnostic Flow
+# Adapter -> Signal -> DNS -> Power settings
+id: wifi_disconnects
+name: "WiFi Keeps Disconnecting"
+trigger_keywords: ["wifi disconnects", "wifi drops", "keeps disconnecting", "wifi unstable", "losing connection", "wifi reconnect"]
+
+steps:
+  - id: check_adapter
+    name: "Check WiFi Adapter"
+    action: check_network_adapter
+    success: check_signal
+    failure: fix_adapter
+
+  - id: fix_adapter
+    name: "Reset WiFi Adapter"
+    action: fix_adapter
+    success: check_signal
+    failure: report_adapter_fail
+
+  - id: check_signal
+    name: "Check WiFi Signal"
+    action: check_wifi_signal
+    condition:
+      - if: "result.signal_pct < 30"
+        goto: report_weak_signal
+      - if: "result.signal_pct < 60"
+        goto: check_dns
+      - else:
+        goto: check_dns
+
+  - id: check_dns
+    name: "Check DNS"
+    action: check_dns_resolution
+    success: check_bandwidth
+    failure: fix_dns
+
+  - id: fix_dns
+    name: "Flush DNS"
+    action: fix_dns
+    success: check_bandwidth
+    failure: report_dns_issue
+
+  - id: check_bandwidth
+    name: "Check Connection Speed"
+    action: measure_bandwidth
+    condition:
+      - if: "result.download_mbps < 1"
+        goto: report_very_slow
+      - else:
+        goto: report_ok
+
+  # ── Terminal states ──
+  - id: report_ok
+    name: "WiFi Connection Stable"
+    action: check_wifi_signal
+
+  - id: report_adapter_fail
+    name: "WiFi Adapter Not Responding"
+    action: check_network_adapter
+
+  - id: report_weak_signal
+    name: "WiFi Signal Too Weak"
+    action: check_wifi_signal
+
+  - id: report_dns_issue
+    name: "DNS Problems Persist"
+    action: check_dns_resolution
+
+  - id: report_very_slow
+    name: "Connection Very Slow"
+    action: measure_bandwidth

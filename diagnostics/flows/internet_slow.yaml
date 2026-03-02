@@ -1,0 +1,83 @@
+# Internet Slow — Diagnostic Flow
+# Follows real tech support logic: adapter -> DNS -> ping -> bandwidth -> WiFi -> background
+id: internet_slow
+name: "Internet is Slow"
+trigger_keywords: ["slow internet", "buffering", "lag", "latency", "internet slow", "wifi slow", "loading slow"]
+
+steps:
+  - id: check_adapter
+    name: "Check Network Adapter"
+    action: check_network_adapter
+    success: check_dns
+    failure: fix_adapter
+
+  - id: fix_adapter
+    name: "Reset Network Adapter"
+    action: fix_adapter
+    success: check_dns
+    failure: report_no_adapter
+
+  - id: check_dns
+    name: "Check DNS Resolution"
+    action: check_dns_resolution
+    success: check_ping
+    failure: fix_dns
+
+  - id: fix_dns
+    name: "Flush DNS Cache"
+    action: fix_dns
+    success: check_ping
+    failure: report_dns_fail
+
+  - id: check_ping
+    name: "Ping Connectivity Test"
+    action: check_ping
+    success: check_bandwidth
+    failure: check_wifi_signal
+
+  - id: check_bandwidth
+    name: "Measure Download Speed"
+    action: measure_bandwidth
+    condition:
+      - if: "result.download_mbps < 1"
+        goto: check_wifi_signal
+      - if: "result.download_mbps < 10"
+        goto: check_background
+      - else:
+        goto: report_ok
+
+  - id: check_wifi_signal
+    name: "Check WiFi Signal Strength"
+    action: check_wifi_signal
+    condition:
+      - if: "result.signal_pct < 40"
+        goto: report_weak_signal
+      - else:
+        goto: check_background
+
+  - id: check_background
+    name: "Check Background Network Usage"
+    action: check_background_usage
+    success: report_ok
+    failure: report_background_heavy
+
+  # ── Terminal states (no further steps) ──
+  - id: report_ok
+    name: "Internet Looks Good"
+    action: measure_bandwidth  # Re-measure to confirm
+
+  - id: report_no_adapter
+    name: "No Network Adapter"
+    action: check_network_adapter
+
+  - id: report_dns_fail
+    name: "DNS Still Failing"
+    action: check_dns_resolution
+
+  - id: report_weak_signal
+    name: "Weak WiFi Signal"
+    action: check_wifi_signal
+
+  - id: report_background_heavy
+    name: "Heavy Background Usage"
+    action: check_background_usage

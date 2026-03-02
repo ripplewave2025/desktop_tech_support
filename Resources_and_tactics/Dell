@@ -1,0 +1,22 @@
+https://www.dell.com/support/home/en-in      (depending upon the country they are in)
+Click on "Detect this PC" button
+Winodws udpate is always preferred at first and after windows update needs to restart the computer.
+It will detect the model and service tag automatically (need to allow the browser to access the hardware)
+if the supportassist is installed on the computer then run the supportassist specific to the issues
+if there is bios update available update it immediately and restart the computer (suggested if the issue is related to hardware or multiple issues like audio, video, graphics, printer, slow computer and so on)
+Restart is always adviseable
+
+"Freezing issue" - All the apps and systems are not responding
+"Slow computer" - System is slow and responding but very slowly
+"Blue screen of death" - System is not responding and showing blue screen with error code
+"Black screen of death" - System is not responding and showing black screen with error code
+"No internet wireless" - System is not able to connect to the internet wirelessly (shows the globe icon with no internet access symbol in the taskbar)
+"No internet wired" - System is not able to connect to the internet wired (shows the globe icon with no internet access symbol in the taskbar)
+"no audio" - System is not able to play audio (shows the speaker icon with no audio symbol in the taskbar)
+"distorted audio" - System is able to play audio but very low volume
+"no audio on specific apps" - System is able to play audio but not in zoom, whatsapp, teams, discord, etc
+"microphone issue" - System is not able to record audio
+"Microphone volume low" - System is able to record the audio but the volume is very low (need to check first if the issue is with the speaker or the microphone)
+"microphone on specific apps" - System is able to record audio but not in zoom, whatsapp, teams, discord, etc
+"no video" - System is not able to see the
+"video on specific apps" - System is able to show video but not in zoom, whatsapp, teams, discord, etc  

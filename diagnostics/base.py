@@ -12,8 +12,9 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 # Fix Windows console encoding
+# Skip this in frozen (PyInstaller) mode to avoid double-wrapping stdout
 try:
-    if sys.stdout and hasattr(sys.stdout, 'buffer'):
+    if not getattr(sys, 'frozen', False) and sys.stdout and hasattr(sys.stdout, 'buffer'):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 except Exception:
     pass

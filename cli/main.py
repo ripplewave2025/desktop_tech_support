@@ -18,8 +18,9 @@ import json
 import os
 
 # Fix Windows console encoding for narrator output
+# Skip this in frozen (PyInstaller) mode — it's already handled by the entry point
 try:
-    if sys.stdout and hasattr(sys.stdout, 'buffer'):
+    if not getattr(sys, 'frozen', False) and sys.stdout and hasattr(sys.stdout, 'buffer'):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 except Exception:
     pass

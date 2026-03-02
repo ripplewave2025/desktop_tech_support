@@ -1,0 +1,74 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicegui/tauri/v2/crates/tauri-cli/schema.json",
+  "productName": "Zora",
+  "version": "1.0.0",
+  "identifier": "com.zora.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Zora AI Desktop Companion",
+        "width": 400,
+        "height": 600,
+        "minWidth": 320,
+        "minHeight": 400,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
+        "center": true,
+        "alwaysOnTop": true
+      }
+    ],
+    "trayIcon": {
+      "id": "zora-tray",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "tooltip": "Zora AI Desktop Companion"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    },
+    "externalBin": [
+      "../sidecar/zora-api"
+    ]
+  },
+  "plugins": {
+    "shell": {
+      "sidecar": true,
+      "scope": [
+        {
+          "name": "../sidecar/zora-api",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "autostart": {
+      "macosExtraArguments": [],
+      "args": [
+        "--autostart"
+      ]
+    }
+  }
+}

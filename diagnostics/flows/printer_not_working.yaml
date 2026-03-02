@@ -1,0 +1,60 @@
+# Printer Not Working — Diagnostic Flow
+# Spooler -> printers installed -> queue -> test
+id: printer_not_working
+name: "Printer Not Working"
+trigger_keywords: ["printer not working", "can't print", "print error", "printer offline", "printer stuck"]
+
+steps:
+  - id: check_spooler
+    name: "Check Print Spooler Service"
+    action: check_spooler_service
+    success: check_printers
+    failure: fix_spooler
+
+  - id: fix_spooler
+    name: "Restart Print Spooler"
+    action: fix_spooler
+    success: check_printers
+    failure: report_spooler_fail
+
+  - id: check_printers
+    name: "Check Installed Printers"
+    action: check_printers_installed
+    success: check_queue
+    failure: report_no_printers
+
+  - id: check_queue
+    name: "Check Print Queue"
+    action: check_print_queue
+    condition:
+      - if: "result.job_count > 0"
+        goto: fix_queue
+      - else:
+        goto: report_ok
+
+  - id: fix_queue
+    name: "Clear Print Queue"
+    action: fix_spooler
+    success: report_fixed
+    failure: report_queue_stuck
+
+  # ── Terminal states ──
+  - id: report_ok
+    name: "Printer Looks Good"
+    action: check_spooler_service
+
+  - id: report_fixed
+    name: "Printer Fixed"
+    action: check_print_queue
+
+  - id: report_spooler_fail
+    name: "Spooler Won't Start"
+    action: check_spooler_service
+
+  - id: report_no_printers
+    name: "No Printers Installed"
+    action: check_printers_installed
+
+  - id: report_queue_stuck
+    name: "Queue Still Stuck"
+    action: check_print_queue

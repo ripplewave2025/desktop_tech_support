@@ -1,4 +1,13 @@
 {
+  "ai": {
+    "provider": "ollama",
+    "model": "qwen2.5:7b",
+    "api_key": "",
+    "base_url": "http://127.0.0.1:11434",
+    "temperature": 0.4,
+    "max_tokens": 4096,
+    "max_tool_rounds": 10
+  },
   "safety": {
     "max_actions_per_minute": 100,
     "require_confirmation_for_high_risk": true,
@@ -9,7 +18,9 @@
   "blacklist": {
     "system_protected": true,
     "custom_paths": [],
-    "custom_processes": ["antivirus.exe"]
+    "custom_processes": [
+      "antivirus.exe"
+    ]
   },
   "input": {
     "mouse_move_duration": 0.2,

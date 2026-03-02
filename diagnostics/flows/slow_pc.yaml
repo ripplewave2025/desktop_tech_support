@@ -1,0 +1,78 @@
+# Slow PC — Diagnostic Flow
+# CPU -> RAM -> Disk -> Startup -> Temp files -> Performance summary
+id: slow_pc
+name: "PC is Running Slow"
+trigger_keywords: ["slow computer", "pc slow", "laggy", "freezing", "hanging", "computer slow", "takes forever"]
+
+steps:
+  - id: check_cpu
+    name: "Check CPU Usage"
+    action: check_cpu_usage
+    condition:
+      - if: "result.cpu_percent > 90"
+        goto: report_cpu_high
+      - else:
+        goto: check_memory
+
+  - id: check_memory
+    name: "Check RAM Usage"
+    action: check_memory_usage
+    condition:
+      - if: "result.memory_percent > 90"
+        goto: report_memory_high
+      - else:
+        goto: check_disk
+
+  - id: check_disk
+    name: "Check Disk Space"
+    action: check_disk_space
+    condition:
+      - if: "result.free_gb < 5"
+        goto: check_temp
+      - else:
+        goto: check_startup
+
+  - id: check_startup
+    name: "Check Startup Programs"
+    action: check_startup_programs
+    condition:
+      - if: "result.startup_count > 15"
+        goto: report_too_many_startup
+      - else:
+        goto: check_temp
+
+  - id: check_temp
+    name: "Check Temp Files"
+    action: check_temp_files
+    condition:
+      - if: "result.temp_mb > 500"
+        goto: fix_temp
+      - else:
+        goto: report_ok
+
+  - id: fix_temp
+    name: "Clean Temp Files"
+    action: fix_temp_files
+    success: report_cleaned
+    failure: report_ok
+
+  # ── Terminal states ──
+  - id: report_ok
+    name: "System Looks Healthy"
+    action: check_cpu_usage
+
+  - id: report_cpu_high
+    name: "CPU Usage Too High"
+    action: check_cpu_usage
+
+  - id: report_memory_high
+    name: "RAM Running Low"
+    action: check_memory_usage
+
+  - id: report_too_many_startup
+    name: "Too Many Startup Programs"
+    action: check_startup_programs
+
+  - id: report_cleaned
+    name: "Temp Files Cleaned"
+    action: check_temp_files

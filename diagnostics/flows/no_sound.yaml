@@ -1,0 +1,57 @@
+# No Sound — Diagnostic Flow
+# Check service -> devices -> volume -> app audio
+id: no_sound
+name: "No Sound / Audio Issues"
+trigger_keywords: ["no sound", "no audio", "can't hear", "speakers not working", "headphones not working", "muted", "volume"]
+
+steps:
+  - id: check_service
+    name: "Check Audio Service"
+    action: check_audio_service
+    success: check_devices
+    failure: fix_service
+
+  - id: fix_service
+    name: "Restart Audio Services"
+    action: fix_audio_service
+    success: check_devices
+    failure: report_service_fail
+
+  - id: check_devices
+    name: "Check Audio Devices"
+    action: check_audio_devices
+    success: check_volume
+    failure: report_no_devices
+
+  - id: check_volume
+    name: "Check Volume Level"
+    action: check_volume
+    success: report_ok
+    failure: fix_volume
+
+  - id: fix_volume
+    name: "Unmute and Set Volume"
+    action: fix_volume
+    success: report_fixed
+    failure: report_volume_fail
+
+  # ── Terminal states ──
+  - id: report_ok
+    name: "Audio Working Fine"
+    action: check_volume
+
+  - id: report_fixed
+    name: "Audio Fixed"
+    action: check_volume
+
+  - id: report_service_fail
+    name: "Audio Service Won't Start"
+    action: check_audio_service
+
+  - id: report_no_devices
+    name: "No Audio Devices Found"
+    action: check_audio_devices
+
+  - id: report_volume_fail
+    name: "Volume Control Failed"
+    action: check_volume
