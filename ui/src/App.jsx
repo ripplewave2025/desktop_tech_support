@@ -6,6 +6,7 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { PinMenu } from './components/PinMenu';
 import { useTauri } from './hooks/useTauri';
 import { useChat } from './hooks/useChat';
+import { useVoice } from './hooks/useVoice';
 
 function App() {
   const [showSettings, setShowSettings] = useState(false);
@@ -20,7 +21,14 @@ function App() {
   const {
     messages, isStreaming, currentTool, toolHistory,
     sendMessage, resetChat,
+    confirmStep, cancelStep, submitUserInput,
   } = useChat();
+
+  // Voice layer lives at the App level so the Settings panel and the
+  // ChatWidget can share one source of truth for voice-mode, mic state,
+  // and the speaker. The transcript callback feeds straight back into
+  // sendMessage — speaking to Zora is indistinguishable from typing.
+  const voice = useVoice({ onTranscript: sendMessage });
 
   const handlePin = useCallback((edge) => {
     if (edge === 'none') {
@@ -113,6 +121,10 @@ function App() {
           toolHistory={toolHistory}
           onSend={sendMessage}
           onQuickAction={sendMessage}
+          onConfirmStep={confirmStep}
+          onCancelStep={cancelStep}
+          onSubmitUserInput={submitUserInput}
+          voice={voice}
         />
 
         {/* ── Settings Modal ── */}
@@ -120,6 +132,11 @@ function App() {
           <SettingsPanel
             isOpen={showSettings}
             onClose={() => setShowSettings(false)}
+            onRunRecipe={(text) => {
+              sendMessage(text);
+              setShowSettings(false);
+            }}
+            voice={voice}
           />
         )}
       </div>

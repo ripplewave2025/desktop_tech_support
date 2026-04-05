@@ -43,3 +43,8 @@ file_version_info.txt
 
 # Runtime data
 tickets/
+storage/*.db
+storage/*.sqlite
+storage/*.sqlite3
+storage/smart_home.json
+storage/user_profile.json

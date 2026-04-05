@@ -1,4 +1,4 @@
-import { Cpu, HardDrive, Activity, Terminal } from 'lucide-react';
+﻿import { Cpu, HardDrive, Activity, Terminal } from 'lucide-react';
 import clsx from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useSystemStats } from '../hooks/useSystemStats';
@@ -50,7 +50,7 @@ function StatCard({ title, value, subtext, icon, color, percent }) {
 }
 
 export function SystemStats() {
-  const { stats, error } = useSystemStats();
+  const { stats } = useSystemStats();
 
   if (!stats) {
     return <div className="glass rounded-xl p-6 animate-pulse bg-white/5 h-32"></div>;
@@ -90,3 +90,4 @@ export function SystemStats() {
     </div>
   );
 }
+

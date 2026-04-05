@@ -1,0 +1,611 @@
+# Smart-home playbooks (Phase 7).
+#
+# Every destructive / stateful action is gated by either:
+#   • PolicyEngine runtime rules on smart_home_call (unlock/disarm/open),
+#   • An explicit manual_gate step authored here,
+#   • Or a requires_confirmation step at the end of an onboarding flow.
+#
+# Onboarding recipes write credentials via smart_home_setup; action
+# recipes read state + call smart_home_call against the user's chosen
+# backend (Home Assistant preferred, Hue next, MQTT last).
+#
+# None of these recipes hard-code an entity_id — ask_user + alias lookup
+# plus select_from_list (Phase 5) disambiguates at runtime.
+
+- issue_id: smart-home-setup-homeassistant
+  title: Connect a Home Assistant instance
+  route: SmartHomeAgent
+  summary: Walks the user through connecting Zora to Home Assistant by
+    collecting the server URL and a long-lived access token, then
+    validates the connection by listing entities.
+  tags: ["connect home assistant", "home assistant setup", "setup home assistant",
+         "add home assistant", "homeassistant setup", "link home assistant",
+         "connect my home assistant", "setup ha", "add ha"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Home Assistant REST API
+      url: https://developers.home-assistant.io/docs/api/rest/
+      snippet: Official Home Assistant REST API documentation for state reads and service calls.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: ha-intro-notify
+      title: Explain what we're about to store
+      description: Warn the user that the long-lived token can control
+        everything on their HA instance, and we're storing it locally
+        (obfuscated) on this machine.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: notify
+      tool_args:
+        title: Connecting to Home Assistant
+        message: "Your long-lived token has full control of your HA instance. Zora stores it locally and never uploads it."
+      requires_confirmation: false
+    - step_id: ha-ask-url
+      title: Ask for the HA server URL
+      description: Prompt the user for their Home Assistant URL (e.g.
+        http://homeassistant.local:8123).
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "What is your Home Assistant URL? (e.g. http://homeassistant.local:8123)"
+        field_name: ha_url
+      requires_confirmation: false
+    - step_id: ha-ask-token
+      title: Ask for a long-lived access token
+      description: HA tokens are created under your Profile → Security →
+        Long-Lived Access Tokens. Paste the whole token string.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Paste your HA long-lived access token (Profile → Security → Create Token)."
+        field_name: ha_token
+      requires_confirmation: false
+    - step_id: ha-save-credentials
+      title: Save and validate the connection
+      description: Persist the credentials (obfuscated) and ping the HA
+        REST API to confirm we can reach it.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_setup
+      tool_args:
+        backend: home_assistant
+        url: "{user.ha_url}"
+        token: "{user.ha_token}"
+      requires_confirmation: true
+    - step_id: ha-list-entities
+      title: List the first batch of entities
+      description: Confirm the connection works by enumerating a few
+        entities the user owns.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_list_entities
+      tool_args:
+        backend: home_assistant
+      requires_confirmation: false
+    - step_id: ha-done-notify
+      title: Notify that setup finished
+      description: Let the user know they can now say things like
+        "turn off the kitchen lights" or "what's the thermostat set to".
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: notify
+      tool_args:
+        title: Home Assistant connected
+        message: "You can now say 'turn off the kitchen lights' or 'set thermostat to 68'."
+      requires_confirmation: false
+
+- issue_id: smart-home-setup-hue
+  title: Connect a Philips Hue bridge
+  route: SmartHomeAgent
+  summary: Discover Hue bridges on the LAN, pair via the physical link
+    button, and store the bridge username.
+  tags: ["connect hue", "hue setup", "philips hue", "hue bridge",
+         "pair hue", "setup hue", "add hue bridge", "connect my hue"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Philips Hue bridge discovery
+      url: https://developers.meethue.com/develop/get-started-2/
+      snippet: Official Hue developer docs covering discovery and authorization.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: hue-discover
+      title: Find Hue bridges on the LAN
+      description: Query discovery.meethue.com and fall back to mDNS.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_discover_hue
+      tool_args:
+        timeout_s: 3
+      requires_confirmation: false
+    - step_id: hue-ask-ip
+      title: Confirm the bridge IP
+      description: If discovery found one bridge, paste or accept its IP.
+        If multiple, pick one.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which Hue bridge IP should I use? (e.g. 192.168.1.42)"
+        field_name: hue_bridge_ip
+      requires_confirmation: false
+    - step_id: hue-press-button
+      title: Press the link button on your Hue bridge
+      description: Physically press the round button on top of the bridge
+        — you have about 30 seconds to finish pairing.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: notify
+      tool_args:
+        title: Press the Hue bridge button
+        message: "Press the round button on top of your Hue bridge now, then confirm below."
+      requires_confirmation: false
+    - step_id: hue-manual-gate
+      title: Confirm you pressed the button
+      description: We pause here to avoid calling the bridge before the
+        user has actually pressed the link button.
+      kind: manual
+      agent_name: SmartHomeAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      manual_gate: true
+    - step_id: hue-pair
+      title: Pair with the bridge and store credentials
+      description: Send the devicetype request to the bridge and store
+        the returned username for later calls.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_setup
+      tool_args:
+        backend: hue
+        bridge_ip: "{user.hue_bridge_ip}"
+      requires_confirmation: false
+    - step_id: hue-list
+      title: List lights and groups
+      description: Confirm the connection works by enumerating bulbs
+        and rooms.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_list_entities
+      tool_args:
+        backend: hue
+      requires_confirmation: false
+
+- issue_id: smart-home-setup-mqtt
+  title: Connect an MQTT broker
+  route: SmartHomeAgent
+  summary: Configure an MQTT broker (e.g. Mosquitto, Home Assistant's
+    built-in broker, Zigbee2MQTT) so advanced users can publish and
+    subscribe to topics.
+  tags: ["connect mqtt", "mqtt setup", "setup mqtt", "add mqtt",
+         "mosquitto", "mqtt broker", "connect my mqtt"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Eclipse Mosquitto
+      url: https://mosquitto.org/
+      snippet: Reference MQTT broker commonly used in home-automation stacks.
+      officialness: community
+      confidence: 0.7
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: mqtt-ask-host
+      title: Ask for the broker host
+      description: Most users enter "homeassistant.local", "mosquitto.local",
+        or a raw LAN IP.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "What is your MQTT broker host? (e.g. homeassistant.local or 192.168.1.50)"
+        field_name: mqtt_host
+      requires_confirmation: false
+    - step_id: mqtt-ask-user
+      title: Ask for username (optional)
+      description: Leave blank for an anonymous broker, otherwise paste
+        the username.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "MQTT username? (leave blank if the broker allows anonymous)"
+        field_name: mqtt_username
+      requires_confirmation: false
+    - step_id: mqtt-ask-pass
+      title: Ask for password (optional)
+      description: Stored obfuscated on disk, redacted in chat transcripts.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "MQTT password? (leave blank if anonymous)"
+        field_name: mqtt_password
+      requires_confirmation: false
+    - step_id: mqtt-save
+      title: Save and validate
+      description: Persist credentials and attempt a connect to the broker.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_setup
+      tool_args:
+        backend: mqtt
+        host: "{user.mqtt_host}"
+        username: "{user.mqtt_username}"
+        password: "{user.mqtt_password}"
+      requires_confirmation: true
+
+- issue_id: smart-home-toggle-device
+  title: Turn a smart-home device on or off
+  route: SmartHomeAgent
+  summary: Ask the user which device they mean (alias or entity pick),
+    then toggle/on/off it via the configured backend.
+  tags: ["turn on", "turn off", "toggle", "switch on", "switch off",
+         "lights on", "lights off", "light on", "light off",
+         "turn the lights", "turn off the", "turn on the"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Local smart-home toggle workflow
+      url: local://knowledge-pack/smart-home-toggle-device
+      snippet: Runtime disambiguation + smart_home_call against the preferred backend.
+      officialness: local
+      confidence: 0.85
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: toggle-ask-entity
+      title: Which device did you mean?
+      description: Let the user name the device (e.g. "living room lights")
+        — alias lookup resolves it to an entity_id at runtime.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which device? (e.g. 'living room lights' or 'light.kitchen')"
+        field_name: sh_entity
+      requires_confirmation: false
+    - step_id: toggle-call
+      title: Send the toggle command
+      description: Toggle the device on or off depending on its current state.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_entity}"
+        action: toggle
+      requires_confirmation: false
+
+- issue_id: smart-home-set-brightness
+  title: Set a light's brightness
+  route: SmartHomeAgent
+  summary: Set a specific brightness level on a light.
+  tags: ["dim", "brighten", "brightness", "set brightness",
+         "dim the", "brighten the", "turn the light down", "turn the light up"]
+  oems: ["generic"]
+  sources:
+    - title: Local brightness recipe
+      url: local://knowledge-pack/smart-home-set-brightness
+      snippet: ask_user(entity) + ask_user(percent) + smart_home_call(set_brightness).
+      officialness: local
+      confidence: 0.8
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: bright-ask-entity
+      title: Which light?
+      description: Accept friendly name or entity_id.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which light?"
+        field_name: sh_entity
+      requires_confirmation: false
+    - step_id: bright-ask-percent
+      title: Brightness (0-100)
+      description: Percent value 0-100 — backends scale as needed.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "What brightness? (0-100)"
+        field_name: sh_brightness
+      requires_confirmation: false
+    - step_id: bright-call
+      title: Apply brightness
+      description: Issue the set_brightness action.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_entity}"
+        action: set_brightness
+        args:
+          brightness: "{user.sh_brightness}"
+      requires_confirmation: false
+
+- issue_id: smart-home-set-temperature
+  title: Set the thermostat temperature
+  route: SmartHomeAgent
+  summary: Change a connected thermostat's target temperature.
+  tags: ["set thermostat", "thermostat to", "set the temperature",
+         "change the thermostat", "heat to", "cool to"]
+  oems: ["generic"]
+  sources:
+    - title: Local thermostat recipe
+      url: local://knowledge-pack/smart-home-set-temperature
+      snippet: ask_user(entity) + ask_user(temperature) + smart_home_call(set_temperature).
+      officialness: local
+      confidence: 0.8
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: temp-ask-entity
+      title: Which thermostat?
+      description: Usually "climate.downstairs" or similar.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which thermostat?"
+        field_name: sh_entity
+      requires_confirmation: false
+    - step_id: temp-ask-value
+      title: Target temperature
+      description: Degrees in your configured unit.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Target temperature?"
+        field_name: sh_temperature
+      requires_confirmation: false
+    - step_id: temp-call
+      title: Apply temperature
+      description: Call the set_temperature service on the entity.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_entity}"
+        action: set_temperature
+        args:
+          temperature: "{user.sh_temperature}"
+      requires_confirmation: true
+
+- issue_id: smart-home-activate-scene
+  title: Activate a scene
+  route: SmartHomeAgent
+  summary: Turn on a pre-configured Home Assistant scene.
+  tags: ["scene", "movie mode", "dinner mode", "relax mode",
+         "activate scene", "run scene", "night mode scene"]
+  oems: ["generic"]
+  sources:
+    - title: Local scene recipe
+      url: local://knowledge-pack/smart-home-activate-scene
+      snippet: ask_user(scene entity) + smart_home_call(activate_scene).
+      officialness: local
+      confidence: 0.8
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: scene-ask
+      title: Which scene?
+      description: Entity_id like "scene.movie_night".
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which scene?"
+        field_name: sh_scene
+      requires_confirmation: false
+    - step_id: scene-call
+      title: Activate scene
+      description: Fire the activate_scene action.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_scene}"
+        action: activate_scene
+      requires_confirmation: false
+
+- issue_id: smart-home-query-state
+  title: Check a smart-home device's current state
+  route: SmartHomeAgent
+  summary: Read the current state of a sensor, thermostat, lock, or switch
+    without changing anything.
+  tags: ["what is the thermostat", "is the door locked", "what's the temperature",
+         "how bright", "is the light on", "check smart home", "state of",
+         "current temperature", "door status"]
+  oems: ["generic"]
+  sources:
+    - title: Local query recipe
+      url: local://knowledge-pack/smart-home-query-state
+      snippet: ask_user(entity) + smart_home_query.
+      officialness: local
+      confidence: 0.85
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: query-ask
+      title: Which device?
+      description: The user's friendly name or entity_id.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which device? (friendly name or entity_id)"
+        field_name: sh_entity
+      requires_confirmation: false
+    - step_id: query-read
+      title: Read the current state
+      description: Call smart_home_query against the preferred backend.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_query
+      tool_args:
+        entity_id: "{user.sh_entity}"
+      requires_confirmation: false
+
+- issue_id: smart-home-security-lock
+  title: Lock a smart lock
+  route: SmartHomeAgent
+  summary: Lock a connected smart lock. Locking is non-destructive so we
+    don't require a manual gate, but the action still runs through the
+    standard smart_home_call consent gate.
+  tags: ["lock the door", "lock front door", "lock the front", "lock door"]
+  oems: ["generic"]
+  sources:
+    - title: Local lock recipe
+      url: local://knowledge-pack/smart-home-security-lock
+      snippet: ask_user(entity) + smart_home_call(lock).
+      officialness: local
+      confidence: 0.85
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: lock-ask
+      title: Which lock?
+      description: Usually entity_id like "lock.front_door".
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which lock?"
+        field_name: sh_lock
+      requires_confirmation: false
+    - step_id: lock-call
+      title: Lock the door
+      description: Fire the lock action.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_lock}"
+        action: lock
+      requires_confirmation: false
+
+- issue_id: smart-home-security-unlock
+  title: Unlock a smart lock
+  route: SmartHomeAgent
+  summary: Unlock a smart lock. Policy engine upgrades this to an
+    irreversible manual-gate action automatically.
+  tags: ["unlock the door", "unlock front door", "unlock the front",
+         "open the door", "unlock door"]
+  oems: ["generic"]
+  sources:
+    - title: Local unlock recipe
+      url: local://knowledge-pack/smart-home-security-unlock
+      snippet: ask_user(entity) + manual confirmation + smart_home_call(unlock).
+      officialness: local
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: high
+  steps:
+    - step_id: unlock-ask
+      title: Which lock?
+      description: Usually entity_id like "lock.front_door".
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which lock should I unlock?"
+        field_name: sh_lock
+      requires_confirmation: false
+    - step_id: unlock-manual-gate
+      title: Confirm before unlocking
+      description: Unlocking a physical door is a high-stakes action —
+        we pause here for an explicit confirmation before calling.
+      kind: manual
+      agent_name: SmartHomeAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: true
+      manual_gate: true
+    - step_id: unlock-call
+      title: Unlock the door
+      description: Fire the unlock action. Policy engine will also gate
+        this at runtime because the action is in the destructive list.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_lock}"
+        action: unlock
+      requires_confirmation: true
+      manual_gate: true
+
+- issue_id: smart-home-security-arm
+  title: Arm the security system
+  route: SmartHomeAgent
+  summary: Arm a connected alarm panel in away, home, or night mode.
+  tags: ["arm the alarm", "arm security", "set alarm to away",
+         "arm away", "arm night", "night mode alarm"]
+  oems: ["generic"]
+  sources:
+    - title: Local arm recipe
+      url: local://knowledge-pack/smart-home-security-arm
+      snippet: ask_user(panel) + select_from_list(mode) + manual gate + smart_home_call(arm).
+      officialness: local
+      confidence: 0.85
+      source_type: knowledge_pack
+      risk: high
+  steps:
+    - step_id: arm-ask-panel
+      title: Which alarm panel?
+      description: Entity_id like "alarm_control_panel.home".
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which alarm panel?"
+        field_name: sh_alarm
+      requires_confirmation: false
+    - step_id: arm-pick-mode
+      title: Which arm mode?
+      description: Home / Away / Night — each maps to a different HA service.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: select_from_list
+      tool_args:
+        prompt: "Which arm mode?"
+        field_name: sh_arm_mode
+        choices:
+          - label: "Arm home"
+            value: arm_home
+          - label: "Arm away"
+            value: arm_away
+          - label: "Arm night"
+            value: arm_night
+      requires_confirmation: false
+    - step_id: arm-manual-gate
+      title: Confirm arming
+      description: Arming an alarm can trigger alerts and false alarms —
+        pause for explicit confirmation.
+      kind: manual
+      agent_name: SmartHomeAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      manual_gate: true
+    - step_id: arm-call
+      title: Arm the system
+      description: Call the chosen arm action. Runtime policy will also
+        gate this because arm_* is in the destructive actions set.
+      kind: tool
+      agent_name: SmartHomeAgent
+      tool_name: smart_home_call
+      tool_args:
+        entity_id: "{user.sh_alarm}"
+        action: "{user.sh_arm_mode}"
+      requires_confirmation: true
+      manual_gate: true

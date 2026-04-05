@@ -1,0 +1,7 @@
+{
+  "name": "smart-home-pack",
+  "version": "0.1.0",
+  "issuer": "zora-local",
+  "signature": "embedded-trusted-pack",
+  "playbooks_file": "playbooks.yaml"
+}

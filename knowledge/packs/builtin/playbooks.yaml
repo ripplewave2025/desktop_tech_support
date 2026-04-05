@@ -1,0 +1,775 @@
+﻿- issue_id: windows-dark-mode
+  title: Enable Windows dark mode
+  route: WindowsAgent
+  summary: Use the Windows themes personalization key instead of manually navigating the Settings UI.
+  tags: ["dark mode", "theme", "appearance"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Launch Windows Settings
+      url: https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-settings
+      snippet: Microsoft documents deep links for Windows Settings pages.
+      officialness: official
+      confidence: 0.92
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: windows-dark-mode
+      title: Enable dark mode
+      description: Switch Windows apps to dark mode.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: change_windows_setting
+      tool_args:
+        setting: enable_dark_mode
+      requires_confirmation: false
+      irreversible: false
+      manual_gate: false
+      status: pending
+
+- issue_id: file-find
+  title: Find a missing user file
+  route: FilesAgent
+  summary: Search the user profile first before attempting broader navigation.
+  tags: ["find file", "where is my file", "pdf", "document", "folder"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Internal file search workflow
+      url: local://knowledge-pack/file-find
+      snippet: Search the user home profile with pattern matching before deeper escalation.
+      officialness: local
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: files-find
+      title: Search common user folders
+      description: Search the user profile for matching files.
+      kind: tool
+      agent_name: FilesAgent
+      tool_name: manage_files
+      tool_args:
+        action: find
+        path: "~"
+        pattern: "*.pdf"
+      requires_confirmation: false
+      irreversible: false
+      manual_gate: false
+      status: pending
+
+- issue_id: oem-hardware-check
+  title: Run the OEM hardware check
+  route: OEMAgent
+  summary: Prefer the installed OEM diagnostics tool before generic health checks.
+  tags: ["hardware check", "diagnostic scan", "supportassist", "vantage", "support assistant", "driver update"]
+  oems: ["dell", "hp", "lenovo"]
+  sources:
+    - title: OEM diagnostics guidance
+      url: local://knowledge-pack/oem-hardware-check
+      snippet: Launch the detected vendor support application if installed; otherwise open the official support page.
+      officialness: local
+      confidence: 0.88
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: oem-launch
+      title: "Open {oem.preferred_tool_name}"
+      description: "Launch {oem.preferred_tool_name} to run hardware diagnostics."
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: launch_app
+      tool_args:
+        path: "{oem.preferred_tool_path}"
+        name: "{oem.preferred_tool_name}"
+      requires_confirmation: false
+      irreversible: false
+      manual_gate: false
+      status: pending
+
+- issue_id: support-followup-check
+  title: Check in on an open support case
+  route: SupportCaseAgent
+  summary: Surface the latest open case and any pending follow-ups so the
+    user can decide whether to escalate, reply, or close it out.
+  tags: ["any updates", "check in", "follow up on", "case status",
+         "status of my ticket", "any word", "heard back"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Internal follow-up workflow
+      url: local://knowledge-pack/support-followup-check
+      snippet: Reads open cases, surfaces due follow-ups, stops before any submission.
+      officialness: local
+      confidence: 0.85
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: followup-notify
+      title: Open follow-ups panel
+      description: Let the user know we are checking case status.
+      kind: tool
+      agent_name: SupportCaseAgent
+      tool_name: notify
+      tool_args:
+        title: Checking your open cases
+        message: "Looking up any follow-ups due on your support tickets."
+      requires_confirmation: false
+    - step_id: followup-manual-review
+      title: Review follow-ups with the user
+      description: Pause so the user can mark follow-ups resolved from the
+        follow-ups pill in the chat UI.
+      kind: manual
+      agent_name: SupportCaseAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: false
+      manual_gate: true
+
+- issue_id: oem-dell-supportassist-scan
+  title: Run a full Dell SupportAssist hardware scan
+  route: OEMAgent
+  summary: Launch SupportAssist, open the Scans tab, and start the full
+    hardware scan. Stops before reporting so the user can read results.
+  tags: ["supportassist scan", "dell hardware scan", "run full scan",
+         "dell diagnostic scan", "full hardware test"]
+  oems: ["dell"]
+  sources:
+    - title: Dell SupportAssist
+      url: https://www.dell.com/support/home/en-us/product-support/product/supportassist-for-pcs-and-tablets/docs
+      snippet: Dell's documented SupportAssist diagnostics flow.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: oem-dell-sa-launch
+      title: "Launch {oem.preferred_tool_name}"
+      description: "Open the Dell SupportAssist application."
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: launch_app
+      tool_args:
+        path: "{oem.preferred_tool_path}"
+        name: "{oem.preferred_tool_name}"
+      requires_confirmation: false
+    - step_id: oem-dell-sa-wait
+      title: Wait for SupportAssist to load
+      description: Give the vendor app a few seconds to render before clicking.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: notify
+      tool_args:
+        title: SupportAssist
+        message: "Waiting for SupportAssist to finish loading..."
+      requires_confirmation: false
+    - step_id: oem-dell-sa-open-scans
+      title: Open the Scans tab
+      description: Click the Scans navigation tab in SupportAssist.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Scans"
+        threshold: 80
+        timeout_s: 15
+      requires_confirmation: false
+    - step_id: oem-dell-sa-hardware
+      title: Start hardware scan
+      description: Kick off the full Hardware Scan.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Run Hardware Scan"
+        threshold: 80
+        timeout_s: 10
+      requires_confirmation: false
+    - step_id: oem-dell-sa-watch
+      title: Let the scan finish
+      description: SupportAssist's hardware scan can take several minutes.
+        We stop here so the user can read the results before we decide next steps.
+      kind: manual
+      agent_name: OEMAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: false
+      manual_gate: true
+
+- issue_id: oem-dell-command-update
+  title: Run Dell Command Update driver scan
+  route: OEMAgent
+  summary: Launch Dell Command | Update and start a driver scan.
+  tags: ["dell command update", "dcu", "update my dell drivers",
+         "dell driver update", "command update drivers"]
+  oems: ["dell"]
+  sources:
+    - title: Dell Command | Update
+      url: https://www.dell.com/support/kbdoc/en-us/000177325/dell-command-update
+      snippet: Dell's documented driver-update tool.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: oem-dcu-launch
+      title: "Launch {oem.preferred_tool_name}"
+      description: "Open Dell Command | Update."
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: launch_app
+      tool_args:
+        path: "{oem.preferred_tool_path}"
+        name: "{oem.preferred_tool_name}"
+      requires_confirmation: false
+    - step_id: oem-dcu-check
+      title: Check for updates
+      description: Click Check to scan for driver and firmware updates.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Check"
+        threshold: 80
+        timeout_s: 15
+      requires_confirmation: false
+    - step_id: oem-dcu-review
+      title: Review and confirm before installing
+      description: Driver / firmware installs are medium-risk — let the user
+        pick which updates to apply before we click Install.
+      kind: manual
+      agent_name: OEMAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: true
+      manual_gate: true
+
+- issue_id: oem-hp-sa-updates
+  title: Run HP Support Assistant updates
+  route: OEMAgent
+  summary: Launch HP Support Assistant and open the Updates tab.
+  tags: ["hp support assistant updates", "hpsa updates", "hp driver update",
+         "update my hp"]
+  oems: ["hp"]
+  sources:
+    - title: HP Support Assistant
+      url: https://support.hp.com/us-en/help/hp-support-assistant
+      snippet: HP's documented support tool.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: oem-hpsa-launch
+      title: "Launch {oem.preferred_tool_name}"
+      description: "Open HP Support Assistant."
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: launch_app
+      tool_args:
+        path: "{oem.preferred_tool_path}"
+        name: "{oem.preferred_tool_name}"
+      requires_confirmation: false
+    - step_id: oem-hpsa-updates
+      title: Open Updates
+      description: Click the Updates tab to check for new drivers and BIOS.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Updates"
+        threshold: 80
+        timeout_s: 15
+      requires_confirmation: false
+    - step_id: oem-hpsa-review
+      title: Review updates before installing
+      description: User reviews the list and approves any installs manually.
+      kind: manual
+      agent_name: OEMAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: true
+      manual_gate: true
+
+- issue_id: oem-lenovo-vantage-updates
+  title: Run Lenovo Vantage system updates
+  route: OEMAgent
+  summary: Launch Lenovo Vantage and open System Update.
+  tags: ["lenovo vantage updates", "vantage updates", "lenovo driver update",
+         "update my lenovo", "lenovo system update"]
+  oems: ["lenovo"]
+  sources:
+    - title: Lenovo Vantage
+      url: https://support.lenovo.com/us/en/solutions/HT505081
+      snippet: Lenovo's documented Vantage tool.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: oem-vantage-launch
+      title: "Launch {oem.preferred_tool_name}"
+      description: "Open Lenovo Vantage."
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: launch_app
+      tool_args:
+        path: "{oem.preferred_tool_path}"
+        name: "{oem.preferred_tool_name}"
+      requires_confirmation: false
+    - step_id: oem-vantage-system-update
+      title: Open System Update
+      description: Click System Update to scan for available updates.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "System Update"
+        threshold: 80
+        timeout_s: 15
+      requires_confirmation: false
+    - step_id: oem-vantage-check
+      title: Check for updates
+      description: Click Check for updates to list available packages.
+      kind: tool
+      agent_name: OEMAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Check for Updates"
+        threshold: 80
+        timeout_s: 15
+      requires_confirmation: false
+    - step_id: oem-vantage-review
+      title: Review updates before installing
+      description: User reviews the list and approves any installs manually.
+      kind: manual
+      agent_name: OEMAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: true
+      manual_gate: true
+
+- issue_id: browser-zoom-join
+  title: Join a Zoom meeting from a link
+  route: BrowserSupportAgent
+  summary: Open the Zoom join URL in the managed browser context, then click
+    through the OS handoff so the meeting starts in the Zoom client.
+  tags: ["zoom", "join zoom", "zoom meeting", "zoom link"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Zoom Web SDK join flow
+      url: local://knowledge-pack/browser-zoom-join
+      snippet: Opens zoom.us/j/{id} and clicks through the desktop-client launcher.
+      officialness: local
+      confidence: 0.88
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: zoom-open-link
+      title: Open the Zoom meeting link
+      description: Navigate the managed browser to the Zoom join URL.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: browser_open
+      tool_args:
+        url: "{research.selected_url}"
+      requires_confirmation: false
+    - step_id: zoom-launch-client
+      title: Launch the Zoom desktop client
+      description: Click the "Open Zoom Meetings" prompt so the native client
+        takes over the meeting.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Open Zoom Meetings"
+        threshold: 80
+        timeout_s: 8
+      requires_confirmation: false
+    - step_id: zoom-join-audio
+      title: Join with computer audio
+      description: Accept the default audio path so the user isn't stuck on
+        a silent meeting.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Join with Computer Audio"
+        threshold: 80
+        timeout_s: 10
+      requires_confirmation: false
+
+- issue_id: browser-teams-join
+  title: Join a Microsoft Teams meeting
+  route: BrowserSupportAgent
+  summary: Open the Teams join URL; fall back to the browser client when the
+    desktop app isn't installed.
+  tags: ["teams meeting", "join teams", "microsoft teams", "teams link"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Microsoft Teams join documentation
+      url: https://support.microsoft.com/en-us/office/join-a-meeting-in-microsoft-teams-1613bb53-f3fa-431e-85a9-d6a91e3468c9
+      snippet: Microsoft's documented join flow.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: teams-open-link
+      title: Open the Teams meeting link
+      description: Navigate the managed browser to the Teams join URL.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: browser_open
+      tool_args:
+        url: "{research.selected_url}"
+      requires_confirmation: false
+    - step_id: teams-continue-in-browser
+      title: Continue in the browser if prompted
+      description: If Teams asks to open the desktop app, stay in the browser
+        fallback so users without the client installed can still join.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: browser_click
+      tool_args:
+        text: "Continue on this browser"
+        timeout_s: 8
+      requires_confirmation: false
+
+- issue_id: community-qa-then-ticket
+  title: Search community forums, summarize, then escalate if unresolved
+  route: BrowserSupportAgent
+  summary: Ask a tech-support question against curated community sources,
+    summarize the top result, and stop before drafting a ticket so the user
+    can confirm whether it helped.
+  tags: ["not working", "error message", "how do i fix", "stack overflow",
+         "community help", "stuck"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Community Q&A workflow
+      url: local://knowledge-pack/community-qa-then-ticket
+      snippet: Multi-site search, extract top-ranked answer, pause before escalation.
+      officialness: local
+      confidence: 0.87
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: community-search
+      title: Search tech communities for the issue
+      description: Run a community-scoped web search across Stack Overflow,
+        Super User, answers.microsoft.com, and r/techsupport.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: community_search
+      tool_args:
+        query: "{intent.normalized_goal}"
+        max_results: 5
+      requires_confirmation: false
+    - step_id: community-summarize-top
+      title: Summarize the highest-ranked answer
+      description: Fetch the top result and pull its article text so we can
+        read the fix with its source URL.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: summarize_page
+      tool_args:
+        url: "{research.selected_url}"
+        max_chars: 2500
+      requires_confirmation: false
+    - step_id: community-notify-findings
+      title: Show the findings to the user
+      description: Notify the user that a possible solution is ready to review.
+      kind: tool
+      agent_name: BrowserSupportAgent
+      tool_name: notify
+      tool_args:
+        title: Possible fix found
+        message: I found a community answer. Open Zora to review it.
+      requires_confirmation: false
+    - step_id: community-confirm-helped
+      title: Did that fix it?
+      description: Pause before drafting a support ticket so the user can
+        confirm whether the community answer resolved the issue.
+      kind: manual
+      agent_name: BrowserSupportAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: false
+      manual_gate: true
+
+- issue_id: support-ticket-draft
+  title: Draft and track a support case
+  route: SupportCaseAgent
+  summary: Create a local evidence bundle and stop before final support portal submission.
+  tags: ["support ticket", "case", "contact support", "follow up"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Internal support-ticket workflow
+      url: local://knowledge-pack/support-ticket-draft
+      snippet: Build the case summary locally, then open the selected portal and pause before final submit.
+      officialness: local
+      confidence: 0.95
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: support-ticket-draft
+      title: Create a local support draft
+      description: Create a local ticket bundle with system info and screenshots.
+      kind: tool
+      agent_name: SupportCaseAgent
+      tool_name: create_support_ticket
+      tool_args:
+        issue_summary: Support request
+        steps_tried: ""
+      requires_confirmation: false
+      irreversible: false
+      manual_gate: false
+      status: pending
+    - step_id: support-final-submit
+      title: Pause before final submit
+      description: Do not submit the support request without explicit confirmation.
+      kind: manual
+      agent_name: SupportCaseAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: true
+      manual_gate: true
+      status: pending
+
+- issue_id: windows-bluetooth-pair
+  title: Pair a Bluetooth device
+  route: WindowsAgent
+  summary: Open the Bluetooth Settings page, ask the user to put the device in
+    pairing mode, then walk the Add-a-device dialog and click through to Done.
+  tags: ["bluetooth", "pair", "pairing", "headphones", "earbuds", "airpods",
+         "bluetooth mouse", "bluetooth keyboard", "bt device"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Pair a Bluetooth device in Windows
+      url: https://support.microsoft.com/en-us/windows/pair-a-bluetooth-device-in-windows-2be7b51f-6ae9-b757-a3b9-95ee40c3e242
+      snippet: Microsoft's documented Bluetooth pairing flow for Windows 10/11.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: bt-open-settings
+      title: Open Bluetooth settings
+      description: Open the Bluetooth & devices Settings page.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: change_windows_setting
+      tool_args:
+        setting: open_bluetooth_devices
+      requires_confirmation: false
+    - step_id: bt-prompt-ready
+      title: Put your device in pairing mode
+      description: Hold the pairing button until the LED flashes — most
+        headphones and mice need this before Windows can see them.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: notify
+      tool_args:
+        title: Put your Bluetooth device in pairing mode
+        message: "Hold the pairing button on your device until the light flashes, then press Confirm."
+      requires_confirmation: false
+    - step_id: bt-wait-user-ready
+      title: Confirm the device is in pairing mode
+      description: Stop and wait for the user to confirm the device is
+        advertising before we poke the Windows UI.
+      kind: manual
+      agent_name: WindowsAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: false
+      manual_gate: true
+    - step_id: bt-click-add-device
+      title: Click "Add device"
+      description: Open the Add-a-device dialog.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Add device"
+        threshold: 80
+        timeout_s: 8
+      requires_confirmation: false
+    - step_id: bt-click-bluetooth-category
+      title: Choose Bluetooth
+      description: Select the Bluetooth category in the Add-a-device dialog.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Bluetooth"
+        threshold: 80
+        timeout_s: 6
+      requires_confirmation: false
+    - step_id: bt-ask-device-name
+      title: What is the device name shown in Windows?
+      description: Ask the user which advertised name they want to pair
+        (e.g. "AirPods Pro", "Logitech M720").
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "What is the device name shown in the Add-a-device list?"
+        field_name: bt_device_name
+      requires_confirmation: false
+    - step_id: bt-click-device
+      title: Click the advertised device
+      description: Click the matching device row once it appears.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "{user.bt_device_name}"
+        threshold: 75
+        timeout_s: 20
+      requires_confirmation: false
+    - step_id: bt-click-done
+      title: Finish pairing
+      description: Click Done once Windows confirms the pairing.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: gui_click_label
+      tool_args:
+        label: "Done"
+        threshold: 85
+        timeout_s: 15
+      requires_confirmation: false
+
+- issue_id: windows-phone-link
+  title: Connect an Android / iPhone with Phone Link
+  route: WindowsAgent
+  summary: Open Windows Mobile devices settings and let the user walk through
+    the official Phone Link QR pairing flow.
+  tags: ["phone link", "link phone", "android phone", "iphone", "your phone",
+         "connect phone", "mobile devices"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Set up Phone Link
+      url: https://support.microsoft.com/en-us/topic/phone-link-requirements-and-setup-cd2a1ee7-75a7-66a6-9d4e-bf22e735f9e3
+      snippet: Microsoft's documented Phone Link onboarding.
+      officialness: official
+      confidence: 0.9
+      source_type: knowledge_pack
+      risk: low
+  steps:
+    - step_id: phone-open-settings
+      title: Open the Mobile devices settings page
+      description: Surface the Phone Link entry point in Settings.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: change_windows_setting
+      tool_args:
+        setting: open_phone_link
+      requires_confirmation: false
+    - step_id: phone-notify-next-step
+      title: Walk the user through Phone Link setup
+      description: Microsoft's pairing flow needs manual steps on the phone —
+        we surface the page and step aside.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: notify
+      tool_args:
+        title: Phone Link is ready
+        message: "Follow the on-screen prompt — sign in, then scan the QR code from your phone's Link to Windows app."
+      requires_confirmation: false
+    - step_id: phone-manual-complete
+      title: Finish pairing on your phone
+      description: Complete pairing on the phone side (scan QR, approve
+        permissions). We pause here so the user drives the handoff.
+      kind: manual
+      agent_name: WindowsAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: false
+      manual_gate: true
+
+- issue_id: install-from-downloads
+  title: Install a setup.exe from the Downloads folder
+  route: WindowsAgent
+  summary: Find the installer the user mentioned, launch it after confirming,
+    and click through the standard Next/Agree/Install wizard.
+  tags: ["install setup", "install exe", "install the", "run setup",
+         "run installer", "from downloads", "setup.exe", "installer"]
+  oems: ["generic", "dell", "hp", "lenovo"]
+  sources:
+    - title: Local install workflow
+      url: local://knowledge-pack/install-from-downloads
+      snippet: Find a user-specified installer in ~/Downloads, confirm launch, walk the wizard.
+      officialness: local
+      confidence: 0.8
+      source_type: knowledge_pack
+      risk: medium
+  steps:
+    - step_id: install-find
+      title: Find the installer in Downloads
+      description: Search the user's Downloads folder for matching executables.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: manage_files
+      tool_args:
+        action: find
+        path: "~/Downloads"
+        pattern: "*.exe"
+      requires_confirmation: false
+    - step_id: install-ask-which
+      title: Which installer should I run?
+      description: If there's more than one match, let the user disambiguate
+        by filename before we launch anything.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: ask_user
+      tool_args:
+        prompt: "Which installer should I run? (paste the full path)"
+        field_name: installer_path
+      requires_confirmation: false
+    - step_id: install-confirm-launch
+      title: Confirm before launching the installer
+      description: Launching arbitrary .exe files is a medium-risk action —
+        require an explicit Confirm before running.
+      kind: manual
+      agent_name: WindowsAgent
+      tool_name: ""
+      tool_args: {}
+      requires_confirmation: true
+      irreversible: false
+      manual_gate: true
+    - step_id: install-launch
+      title: Launch the installer
+      description: Start the selected installer.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: launch_app
+      tool_args:
+        path: "{user.installer_path}"
+      requires_confirmation: false
+    - step_id: install-wizard
+      title: Click through the setup wizard
+      description: Walk the installer's Next/Agree/Install/Finish screens.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: gui_wizard_next
+      tool_args:
+        max_steps: 12
+        step_delay_s: 1.5
+      requires_confirmation: false
+    - step_id: install-notify-done
+      title: Notify when the installer reports done
+      description: Let the user know the wizard finished so they can verify
+        the app launched correctly.
+      kind: tool
+      agent_name: WindowsAgent
+      tool_name: notify
+      tool_args:
+        title: Installer finished
+        message: "The setup wizard reported completion. Please verify the app launches."
+      requires_confirmation: false
