@@ -1,7 +1,61 @@
-# Zora v2.1 — What's Done, What's Next
+# Zora — What's Done, What's Next
 
 > **Living doc.** Updated every session so all agents stay in sync.
-> Last updated: Mar 2, 2026
+> Last updated: May 15, 2026 (v2.3.1 release prep)
+
+## v2.3.1 — Hardening + Depth (CURRENT)
+
+Closes 8 of the top-10 audit items + adds the features that make Zora
+actually replace a phone call. See `RELEASE_NOTES_2.3.1.md` for the
+shipping notes and `SHIPPING_CHECKLIST.md` for the cut/publish flow.
+
+### Security
+- **Safe-operation catalog** (`core/safe_ops.py`) — 25 named operations
+  with server-side argv construction. Replaces free-form
+  `run_powershell` for everything in the catalog. Closes audit #1
+  (PowerShell injection bypass).
+- **DPAPI secret store** (`core/secret_store.py`) — keyring-based wrapper
+  around Windows Credential Manager. API keys + smart-home creds now
+  persist there. Legacy `zxor$` smart-home values and hand-pasted
+  plaintext migrate transparently on first load. Closes audit #2 and #3.
+
+### Shippability
+- **Auto-update** (`core/updater.py`) — GitHub Releases polling, SHA-256
+  verification, delegates install to the Inno Setup installer. Closes
+  audit #4 (modulo code signing).
+- **Single-instance lock + port fallback** (`core/single_instance.py`) —
+  Windows named mutex + `find_free_port`. Closes audit #6 and #8.
+- **Crash reporting + log rotation** (`core/crash_reporter.py`) —
+  file-based structured dumps, support-bundle ZIP, RotatingFileHandler.
+  Closes audit #7.
+
+### Dual-mode UX
+- **Expert/Novice toggle** — Settings panel switch, system prompt
+  addendum, full tool catalog on small models when expert mode is on,
+  badge in chat header. Closes audit #9.
+
+### Deeper Windows depth
+- **OEM silent driver delegation** (`ai/oem_silent.py`) — Dell Command
+  Update, HP Image Assistant, Lenovo Thin Installer in unattended mode.
+- **BSOD triage** (`core/bsod_analyzer.py`) — pulls bugcheck events from
+  the System log, 22-code explainer with plain-English causes.
+- **Event Log triage** (`core/event_log_triage.py`) — grouped + ranked
+  recent errors, 13 known IDs annotated.
+- **Warranty lookup** — service-tag-aware URLs for Dell / HP / Lenovo.
+- **Diagnostics UI** — Settings → Diagnostics surfaces crashes, BSODs,
+  Event Log triage with per-item "Send to support" bundle download.
+
+### Engineering
+- `core/version.py` — single source of truth for the version string.
+- Three new REST endpoints under `/api/diagnostics/*`.
+- Three new REST endpoints under `/api/update/*`.
+- Four new REST endpoints under `/api/crashes/*`.
+- ~80 new tests across 7 new test files.
+
+## Previous Releases
+
+The sections below describe work from v1.0 through v2.2 (March 2026 and
+earlier). See the v2.3.1 block above for what just shipped.
 
 ## What's Built (Working Now)
 

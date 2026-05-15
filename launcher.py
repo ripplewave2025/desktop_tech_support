@@ -8,10 +8,23 @@ This is the entry point for the PyInstaller .exe build.
 import sys
 import os
 
+# Single source of truth lives in core/version.py; we re-export it here so
+# legacy callers that do ``from launcher import ZORA_VERSION`` keep working.
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from core.version import ZORA_VERSION  # noqa: F401
+except Exception:
+    ZORA_VERSION = "0.0.0"
+
 # ── Fix for windowed mode (console=False in PyInstaller) ──────────
 # When built as a windowed .exe, sys.stdout/stderr are None.
 # Uvicorn's log formatter calls .isatty() on them and crashes.
 # Redirect to a log file so everything still works.
+#
+# We open the log file directly (so print() and uvicorn's stream writers
+# both land somewhere), AND we attach a RotatingFileHandler to the root
+# logger so structured logging.* calls also rotate. Both write to the same
+# file path so the user sees one combined log.
 if sys.stdout is None or sys.stderr is None:
     _log_dir = os.path.join(
         os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "Zora"
@@ -32,7 +45,10 @@ import shutil
 import json
 from pathlib import Path
 
-# Fix paths for PyInstaller bundle
+# Fix paths for PyInstaller bundle. Done BEFORE the crash-reporter import
+# below so `from core.crash_reporter ...` resolves whether we're frozen,
+# launched from project root, or launched via a desktop shortcut whose cwd
+# is somewhere else entirely.
 if getattr(sys, 'frozen', False):
     BASE_DIR = sys._MEIPASS
     os.environ["ZORA_BASE_DIR"] = BASE_DIR
@@ -41,6 +57,24 @@ else:
 
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+
+# ── Crash reporter + rotating log ─────────────────────────────────
+# As early as possible (right after path setup) so import-time exceptions
+# in the rest of launcher.py / the main app are captured to disk.
+try:
+    _zora_data = Path(os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))) / "Zora"
+    from core.crash_reporter import (
+        install_crash_handlers as _install_crash_handlers,
+        attach_rotating_log as _attach_rotating_log,
+    )
+    _install_crash_handlers(version=ZORA_VERSION,
+                            crash_dir=_zora_data / "crashes")
+    _attach_rotating_log(log_path=_zora_data / "zora.log")
+except Exception as _crash_setup_err:
+    # Don't take the launcher down if the crash reporter itself can't
+    # set up — just complain and continue.
+    print(f"[Zora] Crash reporter setup skipped: {_crash_setup_err}",
+          file=sys.stderr)
 
 PORT = 8000
 URL = f"http://127.0.0.1:{PORT}"
@@ -247,21 +281,22 @@ $sc.Save()
 
 
 # ─── Main App Launch ─────────────────────────────────
-def open_browser_when_ready():
-    """Wait for the server to be ready, then open browser."""
+def open_browser_when_ready(port: int):
+    """Wait for the server to be ready on `port`, then open the browser."""
+    target_url = f"http://127.0.0.1:{port}"
     for _ in range(30):
         time.sleep(0.5)
-        if is_port_in_use(PORT):
-            webbrowser.open(URL)
+        if is_port_in_use(port):
+            webbrowser.open(target_url)
             return
-    print(f"[Zora] Server didn't start in time. Open {URL} manually.")
+    print(f"[Zora] Server didn't start in time. Open {target_url} manually.")
 
 
-def start_tray_icon():
+def start_tray_icon(url: str):
     """Start system tray icon (best-effort — silently skips if pystray missing)."""
     try:
         from tray.tray_icon import ZoraTray
-        tray = ZoraTray(url=URL, on_quit=lambda: os._exit(0))
+        tray = ZoraTray(url=url, on_quit=lambda: os._exit(0))
         tray.start()
         print("  ✅ System tray icon active\n")
         return tray
@@ -273,14 +308,59 @@ def start_tray_icon():
 
 
 def main():
+    # ── Single-instance enforcement ─────────────────────
+    # If another Zora is already running, don't spawn a second uvicorn.
+    # Open the existing UI for the user and exit cleanly.
+    from core.single_instance import (
+        acquire_lock,
+        find_free_port,
+        write_instance_metadata,
+        read_running_instance,
+    )
+
+    lock = acquire_lock()
+    if lock is None:
+        existing = read_running_instance()
+        if existing:
+            print(BANNER)
+            print(f"  Zora is already running at {existing['url']}.")
+            print("  Opening it for you...\n")
+            try:
+                webbrowser.open(existing["url"])
+            except Exception:
+                pass
+        else:
+            # Lock held but no reachable instance — likely starting up or
+            # crashed mid-launch. Tell the user instead of silently dying.
+            print(BANNER)
+            print("  Another Zora is starting up. Try again in a few seconds.\n")
+        sys.exit(0)
+
     # First-run setup
     if not SETUP_MARKER.exists() or "--setup" in sys.argv:
         run_setup()
 
     clear()
     print(BANNER)
-    print(f"  Starting Zora on {URL}")
+
+    # ── Pick a port ────────────────────────────────────
+    # Prefer 8000; if it's taken (by another app, NOT another Zora — the
+    # mutex above would have caught that), walk up to find a free one.
+    try:
+        chosen_port = find_free_port(preferred=PORT, max_tries=20)
+    except RuntimeError:
+        print(f"  ❌ No free port between {PORT} and {PORT + 19}.")
+        print("     Close some apps and try again.\n")
+        sys.exit(1)
+
+    if chosen_port != PORT:
+        print(f"  ⚠️  Port {PORT} was busy. Using {chosen_port} instead.")
+    chosen_url = f"http://127.0.0.1:{chosen_port}"
+    print(f"  Starting Zora on {chosen_url}")
     print("  Press Ctrl+C to stop.\n")
+
+    # Record where we're running so future double-launches know the URL.
+    write_instance_metadata(chosen_port)
 
     # Ensure Ollama is up
     if is_ollama_installed():
@@ -295,18 +375,21 @@ def main():
         print("  ⚠️ Ollama not found — running in basic mode.")
         print("     Install from https://ollama.com for AI features.\n")
 
-    # Start system tray icon
-    tray = start_tray_icon()
+    # Start system tray icon (uses the dynamic URL so right-click → Open
+    # Zora opens the right port).
+    tray = start_tray_icon(chosen_url)
 
     # Open browser
-    threading.Thread(target=open_browser_when_ready, daemon=True).start()
+    threading.Thread(
+        target=open_browser_when_ready, args=(chosen_port,), daemon=True
+    ).start()
 
     # Start uvicorn (the watcher is started inside server.py on_event("startup"))
     import uvicorn
     uvicorn.run(
         "api.server:app",
         host="127.0.0.1",
-        port=PORT,
+        port=chosen_port,
         log_level="info",
     )
 

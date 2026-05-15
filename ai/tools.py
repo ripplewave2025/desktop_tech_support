@@ -22,6 +22,14 @@ CORE_TOOL_NAMES = {
     "change_windows_setting", "run_powershell",
     "screenshot_and_analyze",
     "run_flow_diagnostic", "apply_remediation",
+    # Safe-ops + OEM are first-class even for small models — they unlock the
+    # "grandma flow" (drivers/diagnostics handled by the OEM, not by clicking)
+    # and they replace run_powershell for everything in the catalog.
+    "safe_op", "safe_op_list",
+    "oem_detect", "oem_scan_drivers", "oem_apply_drivers",
+    # Deeper Windows diagnostics: these are what makes Zora replace a phone
+    # call to support, so they belong in the core set for every model size.
+    "bsod_recent", "event_log_triage", "warranty_url",
 }
 
 TOOL_DEFINITIONS = [
@@ -736,18 +744,297 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    # ─── Safe Operations Catalog ──────────────────────────────
+    # Preferred over run_powershell for any command in the catalog.
+    # The AI picks an op_id; server-side code builds the argv. The LLM
+    # never authors raw shell, eliminating injection risk.
+    {
+        "type": "function",
+        "function": {
+            "name": "safe_op_list",
+            "description": (
+                "List the named operations available in the safe-ops catalog. "
+                "Call this first if you don't know which op_id you need. "
+                "Optionally filter by risk: 'read', 'write', or 'dangerous'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "risk": {
+                        "type": "string",
+                        "enum": ["read", "write", "dangerous"],
+                        "description": "Filter by risk level (optional).",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "safe_op",
+            "description": (
+                "Run a named operation from the safe-ops catalog. "
+                "Prefer this over run_powershell whenever a matching op exists "
+                "(network checks, service control, disk health, Defender, SFC, DISM, "
+                "etc.). The op_id selects what to do; params supply any inputs "
+                "(e.g., service name, hostname). Use dry_run=true to preview the "
+                "exact command without executing — useful for confirmation prompts."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "op_id": {
+                        "type": "string",
+                        "description": (
+                            "Catalog ID. Examples: 'net.flush_dns', 'net.show_dns', "
+                            "'net.test_connection', 'service.status', 'service.restart', "
+                            "'sys.disk_health', 'sys.battery_report', 'sys.event_errors', "
+                            "'defender.status', 'defender.scan_quick', 'repair.sfc', "
+                            "'repair.dism_restore'. Call safe_op_list for the full set."
+                        ),
+                    },
+                    "params": {
+                        "type": "object",
+                        "description": "Parameters for the operation (per-op schema).",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, return the resolved argv without executing.",
+                    },
+                },
+                "required": ["op_id"],
+            },
+        },
+    },
+    # ─── OEM (Dell / HP / Lenovo) Silent Driver Updates ───────
+    # Delegates to the vendor's own unattended tool. The user says
+    # "update my drivers" → we run dcu-cli / HPIA / Thin Installer
+    # in silent mode instead of opening Settings and clicking around.
+    {
+        "type": "function",
+        "function": {
+            "name": "oem_detect",
+            "description": (
+                "Detect the computer's manufacturer (Dell, HP, Lenovo, etc.), "
+                "model, serial number, and which OEM support tools are installed. "
+                "Call this before oem_scan_drivers / oem_apply_drivers so you can "
+                "tell the user what's going to run."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "oem_scan_drivers",
+            "description": (
+                "Scan the vendor catalog for pending driver / BIOS / firmware "
+                "updates using the OEM's silent CLI (Dell Command Update, HP "
+                "Image Assistant, or Lenovo Thin Installer). Read-only: makes no "
+                "changes, just reports what's available. Use this when the user "
+                "asks 'are my drivers up to date?' or 'check my computer for updates'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": "If true, return the exact command instead of running.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "oem_apply_drivers",
+            "description": (
+                "Install all pending driver / BIOS / firmware updates via the "
+                "vendor's silent CLI. ALWAYS ask the user for explicit consent "
+                "first — these updates can require a reboot. Defaults to "
+                "dry_run=true; pass dry_run=false only after the user has agreed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "allow_reboot": {
+                        "type": "boolean",
+                        "description": "Permit automatic reboot after install (default false).",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "description": (
+                            "Default true — preview the command. Set to false only "
+                            "after the user has explicitly consented to install."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    # ─── BSOD / bugcheck triage ──────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "bsod_recent",
+            "description": (
+                "List recent blue-screen events from the System log with their "
+                "bugcheck codes and plain-English explanations. Read-only — call "
+                "this when the user mentions 'blue screen', 'BSOD', 'crash', "
+                "'won't stay on', or after they reboot from a crash."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "How many recent events to return (default 10, max 50).",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bsod_explain",
+            "description": (
+                "Explain a Windows bugcheck code. Returns the name (e.g., "
+                "'IRQL_NOT_LESS_OR_EQUAL') and common causes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": ["integer", "string"],
+                        "description": "Bugcheck code as int (10) or hex string ('0x0A').",
+                    },
+                },
+                "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "minidump_list",
+            "description": (
+                "List .dmp files in C:\\Windows\\Minidump for offline analysis. "
+                "We don't parse the dump bytes here; this just lets the AI tell "
+                "the user 'you have 3 minidumps from yesterday at <path>'."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    # ─── Event Log triage ────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "event_log_recent",
+            "description": (
+                "Recent error/critical events from a Windows log "
+                "(System / Application / Setup). Returns individual events "
+                "with timestamps and provider names. Read-only."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "log": {
+                        "type": "string",
+                        "enum": ["System", "Application", "Setup"],
+                        "description": "Which log to read (default System).",
+                    },
+                    "hours": {
+                        "type": "integer",
+                        "description": "Lookback window in hours (default 24, max 168).",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max events to return (default 50, max 500).",
+                    },
+                    "include_warnings": {
+                        "type": "boolean",
+                        "description": "Also include Level=3 warnings (default false).",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "event_log_triage",
+            "description": (
+                "Grouped + annotated summary of recent log events. PREFER THIS "
+                "over event_log_recent for conversational output — it groups "
+                "by (source, event_id), counts occurrences, and adds plain-"
+                "English explanations for known IDs (Kernel-Power 41, disk 7, "
+                "WHEA 18, etc.). Use when the user asks 'check my event logs', "
+                "'what's been failing', 'why does my PC act up'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "log": {
+                        "type": "string",
+                        "enum": ["System", "Application", "Setup"],
+                        "description": "Which log (default System).",
+                    },
+                    "hours": {
+                        "type": "integer",
+                        "description": "Lookback window (default 24, max 168).",
+                    },
+                    "include_warnings": {
+                        "type": "boolean",
+                        "description": "Include warnings too (default false).",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    # ─── OEM warranty lookup ─────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "warranty_url",
+            "description": (
+                "Build the vendor-specific warranty page URL with the user's "
+                "service tag / serial pre-filled. Use when the user asks "
+                "'when does my warranty expire', 'am I still covered', "
+                "'check my warranty'. Pair with open_url to actually open it."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
-def get_tools_for_model(model_name: str = "") -> list:
-    """Return appropriate tool set based on model size.
+def get_tools_for_model(model_name: str = "", expert_mode: bool = False) -> list:
+    """Return the appropriate tool set for the active provider/mode combo.
 
-    Small models (3b, 7b) get 6 core tools to avoid timeouts.
-    Large models (13b+, Claude, GPT) get the full 21 tools.
+    Selection rules:
+      * Expert mode: always exposes the full catalog. The user has opted in
+        to seeing every diagnostic and is presumed to know what each one does.
+      * Novice mode (default): small models (3b/7b/1b) get just the core
+        catalog so we don't blow their context budget; large models get the
+        full set.
+
+    Expert mode wins because power-user value depends on having access to the
+    deep tools (raw event log, DISM, advanced PowerShell ops) — even when the
+    backing model is small, we'd rather show the option than hide it.
     """
+    if expert_mode:
+        return TOOL_DEFINITIONS
     model_lower = model_name.lower()
     is_small = any(tag in model_lower for tag in ["3b", "1b", "7b", ":small", ":mini"])
-
     if is_small:
         return [t for t in TOOL_DEFINITIONS if t["function"]["name"] in CORE_TOOL_NAMES]
     return TOOL_DEFINITIONS

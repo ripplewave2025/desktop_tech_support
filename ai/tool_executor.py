@@ -2250,3 +2250,181 @@ class ToolExecutor:
             }
         except Exception as e:
             return {"error": f"summarize_page failed: {e}", "url": url}
+
+    # ─── Safe Operations Catalog ─────────────────────────────
+    # Replaces free-form run_powershell for everything in the catalog.
+    # The LLM picks an op_id and supplies validated parameters; this layer
+    # builds the argv list server-side, so prompt-injected shell metachars
+    # land as quoted args to a fixed cmdlet rather than being interpreted.
+
+    def _tool_safe_op_list(self, args: Dict) -> Dict:
+        """List available named operations the AI can call by ID."""
+        from . import safe_ops
+        risk = args.get("risk") if isinstance(args, dict) else None
+        return {"operations": safe_ops.list_operations(risk_filter=risk)}
+
+    def _tool_safe_op(self, args: Dict) -> Dict:
+        """Run a named operation from the safe-ops catalog.
+
+        Args:
+          op_id: catalog ID (e.g., "net.flush_dns", "service.restart").
+          params: dict of parameters; validated per-op before execution.
+          dry_run: if True, return the resolved argv without executing.
+        """
+        from . import safe_ops
+        op_id = args.get("op_id")
+        if not op_id:
+            return {"error": "safe_op requires 'op_id'."}
+        params = args.get("params") or {}
+        dry_run = bool(args.get("dry_run", False))
+        return safe_ops.run(op_id, params, dry_run=dry_run)
+
+    # ─── OEM (Dell / HP / Lenovo) Silent CLI ─────────────────
+    # Delegates driver / firmware updates to the vendor's own unattended-mode
+    # tool. We don't reinvent driver installation — we ask Dell Command
+    # Update, HP Image Assistant, or Lenovo Thin Installer to do it.
+
+    def _tool_oem_detect(self, args: Dict) -> Dict:
+        """Return the detected manufacturer, model, and which OEM tools are installed."""
+        from . import oem_silent
+        ctx = oem_silent.detect()
+        return ctx.to_dict()
+
+    def _tool_oem_scan_drivers(self, args: Dict) -> Dict:
+        """Scan the vendor catalog for pending driver/BIOS/firmware updates.
+
+        Read-only — no system changes. Returns the tool's stdout/stderr and a
+        path to the log file so the AI can summarize what's pending.
+        """
+        from . import oem_silent
+        ctx = oem_silent.detect()
+        inv = oem_silent.plan_scan(ctx)
+        if inv is None:
+            return {
+                "vendor": ctx.vendor,
+                "supported": False,
+                "message": (
+                    f"No supported OEM CLI tool installed for vendor '{ctx.vendor}'. "
+                    f"Visit {oem_silent.fallback_support_url(ctx)} for manual support."
+                ),
+                "support_url": oem_silent.fallback_support_url(ctx),
+            }
+        if args.get("dry_run"):
+            return {
+                "vendor": inv.vendor, "tool": inv.tool,
+                "executable": inv.executable, "argv": inv.argv,
+                "description": inv.description, "risk": inv.risk,
+                "dry_run": True,
+            }
+        return oem_silent.execute(inv)
+
+    def _tool_oem_apply_drivers(self, args: Dict) -> Dict:
+        """Install pending driver/BIOS/firmware updates via the vendor's silent CLI.
+
+        WRITE-level operation — the policy layer is expected to consent-gate
+        this. We support `dry_run=True` so the consent UI can preview the
+        exact command before the user agrees.
+        """
+        from . import oem_silent
+        ctx = oem_silent.detect()
+        allow_reboot = bool(args.get("allow_reboot", False))
+        inv = oem_silent.plan_apply(ctx, allow_reboot=allow_reboot)
+        if inv is None:
+            return {
+                "vendor": ctx.vendor,
+                "supported": False,
+                "message": (
+                    f"No supported OEM CLI tool installed for vendor '{ctx.vendor}'. "
+                    f"Visit {oem_silent.fallback_support_url(ctx)} for manual support."
+                ),
+                "support_url": oem_silent.fallback_support_url(ctx),
+            }
+        # Default to dry-run; only an explicit boolean False opts in to install.
+        # This is defense-in-depth — even if upstream forgets to consent-gate,
+        # the caller has to take a deliberate second step.
+        if args.get("dry_run") is not False:
+            return {
+                "vendor": inv.vendor, "tool": inv.tool,
+                "executable": inv.executable, "argv": inv.argv,
+                "description": inv.description, "risk": inv.risk,
+                "dry_run": True,
+                "note": "Pass dry_run=false after consent gate to actually install.",
+            }
+        return oem_silent.execute(inv)
+
+    # ─── BSOD / Bugcheck triage ──────────────────────────────
+    # Reads the Event Log (and the Minidump folder) to surface recent
+    # blue-screens with their bugcheck codes and a plain-English explanation.
+    # Pure-read, no system change — never needs a consent gate.
+
+    def _tool_bsod_recent(self, args: Dict) -> Dict:
+        """List recent BSOD events from the System log.
+
+        Args:
+          limit: how many events back to look (default 10, capped at 50).
+        """
+        from core import bsod_analyzer
+        limit = max(1, min(int((args or {}).get("limit", 10) or 10), 50))
+        return bsod_analyzer.recent_bsods(limit=limit)
+
+    def _tool_bsod_explain(self, args: Dict) -> Dict:
+        """Explain a bugcheck code (decimal int or hex string)."""
+        from core import bsod_analyzer
+        raw = (args or {}).get("code")
+        if raw is None:
+            return {"error": "bsod_explain requires 'code' (int or hex string)."}
+        try:
+            if isinstance(raw, str):
+                code = int(raw, 16) if raw.lower().startswith("0x") else int(raw, 0)
+            else:
+                code = int(raw)
+        except (TypeError, ValueError):
+            return {"error": f"Unparseable bugcheck code: {raw!r}"}
+        return bsod_analyzer.explain(code)
+
+    def _tool_minidump_list(self, args: Dict) -> Dict:
+        """List .dmp files in C:\\Windows\\Minidump for downstream analysis."""
+        from core import bsod_analyzer
+        return bsod_analyzer.minidump_files()
+
+    # ─── Event Log triage ─────────────────────────────────────
+    # Pulls recent errors/critical events from a chosen log, groups them by
+    # (provider, id), and annotates known IDs with plain-English summaries.
+
+    def _tool_event_log_recent(self, args: Dict) -> Dict:
+        """Recent error/critical events from a Windows log (System/Application/Setup).
+
+        Args:
+          log: which log to read (default "System").
+          hours: lookback window in hours (default 24, max 168).
+          limit: max events to return (default 50, max 500).
+          include_warnings: also include Level=3 warnings (default false).
+        """
+        from core import event_log_triage
+        a = args or {}
+        return event_log_triage.recent_errors(
+            log=a.get("log", "System"),
+            hours=int(a.get("hours", 24) or 24),
+            limit=int(a.get("limit", 50) or 50),
+            include_warnings=bool(a.get("include_warnings", False)),
+        )
+
+    def _tool_event_log_triage(self, args: Dict) -> Dict:
+        """Grouped + annotated summary of recent events. Best for chat output."""
+        from core import event_log_triage
+        a = args or {}
+        return event_log_triage.triage_summary(
+            log=a.get("log", "System"),
+            hours=int(a.get("hours", 24) or 24),
+            include_warnings=bool(a.get("include_warnings", False)),
+        )
+
+    # ─── OEM warranty lookup ──────────────────────────────────
+    # Returns the URL of the vendor's warranty page with the user's
+    # serial pre-filled, so the AI can say "click here to see your
+    # warranty status" instead of asking the user to type their serial.
+
+    def _tool_warranty_url(self, args: Dict) -> Dict:
+        """Build the vendor-specific warranty URL for this machine."""
+        from . import oem_silent
+        return oem_silent.warranty_lookup_url()

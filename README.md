@@ -24,17 +24,35 @@ Zora has **7 specialist agents**, **26 guided playbooks**, and a **policy engine
 
 ---
 
-## What's new in this build
+## What's new in v2.3.1
+
+- **Auto-update** — Zora checks GitHub Releases on every Settings open. One
+  click to download (with SHA-256 verification), one click to install.
+- **DPAPI-backed secrets** — API keys + smart-home credentials now live in
+  Windows Credential Manager, not on disk. Legacy obfuscated values migrate
+  automatically on first launch.
+- **Power-user mode** — toggle in Settings flips Zora between novice and
+  expert behavior (technical terms, raw output, full tool catalog).
+- **BSOD + Event Log triage** — "why does my PC keep restarting?" pulls
+  bugcheck codes from the System log and explains them in plain English.
+- **Silent OEM driver updates** — on Dell / HP / Lenovo, "update my drivers"
+  delegates to the vendor's own unattended-install CLI.
+- **Crash reporting + Diagnostics panel** — uncaught exceptions write
+  structured dumps; Settings → Diagnostics shows them with one-click
+  "Send to support" bundle download.
+- **Safe-operation catalog** — replaces free-form PowerShell execution for
+  every operation in the catalog. Closes the injection bypass.
+
+See [RELEASE_NOTES_2.3.1.md](RELEASE_NOTES_2.3.1.md) for full notes.
+
+## What's new in previous builds
 
 - **Voice layer** — tap the mic and speak. Zora speaks back when voice mode is on.
-- **Smart home** — Home Assistant, Philips Hue, and MQTT support with obfuscated credential storage and a dedicated settings panel.
+- **Smart home** — Home Assistant, Philips Hue, and MQTT support with a dedicated settings panel.
 - **Multi-agent orchestrator** — 7 specialists, each with their own tools.
 - **Guided playbooks** — 26 step-by-step recipes. Recipes can ask you questions mid-flight.
-- **Consent gates** — every irreversible action (unlock, disarm, install, credential write) requires your explicit yes.
+- **Consent gates** — every irreversible action requires your explicit yes.
 - **Follow-up scheduler** — Zora remembers open cases and surfaces them when they're due.
-- **Word-boundary knowledge matching** — "lock" and "unlock" no longer collide.
-
-**26/26 tests green.** See [TESTING.md](TESTING.md) for the full manual test plan.
 
 ---
 

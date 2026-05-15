@@ -57,7 +57,15 @@ pm = ProcessManager()
 _agent = None
 _orchestrator = None
 _watcher = None
+
+# Runtime cache of provider API keys. Hydrated from the OS keystore on
+# first lookup so a fresh launch already has the user's previously-saved
+# Claude/OpenAI/Grok/Groq key — no need to paste it again every time.
+# Writes are mirrored to ``ai.secret_store`` so they survive restarts.
 _runtime_api_keys: Dict[str, str] = {}
+
+# Providers we know how to recognize and which env var their SDK reads.
+_KNOWN_API_PROVIDERS = ("claude", "openai", "grok", "groq", "custom")
 
 
 def _provider_env_var(provider: str) -> Optional[str]:
@@ -69,11 +77,83 @@ def _provider_env_var(provider: str) -> Optional[str]:
     }.get(provider)
 
 
+def _api_key_for(provider: str) -> Optional[str]:
+    """Return the API key for `provider`, pulling from cache or keystore.
+
+    Lazily fills the cache on first hit so callers don't pay the keyring
+    round-trip more than once per provider per process.
+    """
+    if not provider:
+        return None
+    if provider in _runtime_api_keys:
+        return _runtime_api_keys[provider] or None
+    try:
+        from ai import secret_store
+        stored = secret_store.get_secret(secret_store.api_key_name(provider))
+    except Exception as e:
+        logger.warning(f"secret_store lookup failed for {provider}: {e}")
+        stored = None
+    if stored:
+        _runtime_api_keys[provider] = stored
+        # Mirror into the env so SDKs that read it directly (Anthropic,
+        # OpenAI) see the same value.
+        env_var = _provider_env_var(provider)
+        if env_var:
+            os.environ.setdefault(env_var, stored)
+    return stored
+
+
+def _save_api_key(provider: str, key: str) -> None:
+    """Persist or clear an API key for a provider. Updates cache + keystore + env."""
+    from ai import secret_store
+    name = secret_store.api_key_name(provider)
+    if key:
+        _runtime_api_keys[provider] = key
+        secret_store.set_secret(name, key)
+    else:
+        _runtime_api_keys.pop(provider, None)
+        secret_store.delete_secret(name)
+    env_var = _provider_env_var(provider)
+    if env_var:
+        if key:
+            os.environ[env_var] = key
+        else:
+            os.environ.pop(env_var, None)
+
+
+def _migrate_legacy_api_keys(config: Dict, config_path: str) -> Dict:
+    """Move any plaintext ``api_key`` from config.json into the keystore.
+
+    Returns the cleaned config (no api_key). If a migration happens, the
+    file on disk is also rewritten without the key.
+    """
+    ai = config.get("ai") or {}
+    legacy_key = ai.get("api_key")
+    if not legacy_key:
+        return config
+    provider = ai.get("provider", "ollama")
+    try:
+        _save_api_key(provider, legacy_key)
+        logger.info(f"Migrated legacy api_key for provider '{provider}' to OS keystore.")
+    except Exception as e:
+        logger.warning(f"Legacy api_key migration failed: {e}")
+        return config
+    # Strip the key from the dict and rewrite the file.
+    ai.pop("api_key", None)
+    config["ai"] = ai
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Failed to rewrite config.json post-migration: {e}")
+    return config
+
+
 def _inject_runtime_api_key(config: Dict) -> Dict:
     out = dict(config)
     ai = dict(out.get("ai", {}))
     provider = ai.get("provider", "ollama")
-    runtime_key = _runtime_api_keys.get(provider)
+    runtime_key = _api_key_for(provider)
     if runtime_key:
         ai["api_key"] = runtime_key
     out["ai"] = ai
@@ -87,7 +167,10 @@ def _load_config() -> Dict:
     )
     if os.path.exists(config_path):
         with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            config = json.load(f)
+        # One-shot: if an older build left api_key on disk, move it to the
+        # keystore now and rewrite the file without it.
+        return _migrate_legacy_api_keys(config, config_path)
     return {}
 
 
@@ -100,6 +183,15 @@ def _get_provider_instance():
         return None
 
 
+def _expert_mode_from_config() -> bool:
+    """Read the expert-mode flag from config.json. Defaults to False (novice)."""
+    try:
+        config = _load_config()
+        return bool((config.get("ai") or {}).get("expert_mode", False))
+    except Exception:
+        return False
+
+
 def _get_agent():
     global _agent
     if _agent is None:
@@ -107,8 +199,11 @@ def _get_agent():
         if provider is None:
             return None
         try:
-            _agent = ZoraAgent(provider)
-            logger.info(f"Zora agent initialized with {provider.name()}")
+            _agent = ZoraAgent(provider, expert_mode=_expert_mode_from_config())
+            logger.info(
+                f"Zora agent initialized with {provider.name()} "
+                f"(expert_mode={_agent.expert_mode})"
+            )
         except Exception as e:
             logger.warning(f"AI agent init failed: {e}")
             _agent = None
@@ -134,6 +229,15 @@ async def startup():
     _get_orchestrator()
     _start_watcher()
     _start_followup_scheduler()
+    # Now that uvicorn's asyncio loop is up, attach the crash handler to it
+    # so unhandled exceptions inside async tool handlers, the orchestrator,
+    # or background tasks land in the same crash-dump folder.
+    try:
+        from core.crash_reporter import install_async_handler
+        from core.version import ZORA_VERSION as _ver
+        install_async_handler(version=_ver)
+    except Exception as e:
+        logger.warning(f"Async crash handler install failed: {e}")
 
 
 _followup_task: Optional["asyncio.Task"] = None
@@ -215,6 +319,11 @@ class SettingsUpdate(BaseModel):
     model: Optional[str] = None
     api_key: Optional[str] = None
     base_url: Optional[str] = None
+    # Power-user toggle. False = novice (default, plain English, lots of
+    # hand-holding). True = expert (technical terms, raw output, fewer
+    # confirmations on reversible actions, full tool catalog regardless
+    # of model size). Persisted in config.json.
+    expert_mode: Optional[bool] = None
 
 
 @app.get("/api/status")
@@ -879,15 +988,38 @@ def get_settings():
     agent = _get_agent()
     provider_name = ai_config.get("provider", "ollama")
     provider_env = _provider_env_var(provider_name)
-    has_runtime_key = bool(_runtime_api_keys.get(provider_name))
+    # has_api_key is True if EITHER the keystore has one (lazy-hydrates cache)
+    # OR the env var is set externally (so power users using env vars aren't
+    # told the field is empty).
+    has_key = bool(_api_key_for(provider_name)) or bool(
+        provider_env and os.environ.get(provider_env)
+    )
+    try:
+        from ai import secret_store
+        secrets_backend_secure = secret_store.is_secure()
+    except Exception:
+        secrets_backend_secure = False
     return {
         "provider": provider_name,
         "model": ai_config.get("model", ""),
-        "has_api_key": bool(has_runtime_key or (provider_env and os.environ.get(provider_env))),
+        "has_api_key": has_key,
         "base_url": ai_config.get("base_url", ""),
         "available_providers": ["ollama", "claude", "openai", "grok", "groq", "custom"],
         "active_provider": agent.provider_name if agent else "none",
+        # Lets the UI badge whether secrets are DPAPI-backed or running in
+        # the in-memory fallback (CI / non-Windows dev).
+        "secrets_backend_secure": secrets_backend_secure,
+        # Expert/Novice mode — surfaced so the UI can render the toggle
+        # AND a header badge that reflects the live mode.
+        "expert_mode": bool(ai_config.get("expert_mode", False)),
     }
+
+
+@app.get("/api/settings/mode")
+def get_mode():
+    """Cheap polling endpoint for the chat header to show the current mode badge."""
+    config = _load_config()
+    return {"expert_mode": bool((config.get("ai") or {}).get("expert_mode", False))}
 
 
 @app.post("/api/settings")
@@ -909,21 +1041,20 @@ def update_settings(settings: SettingsUpdate):
     effective_provider = settings.provider or config["ai"].get("provider", "ollama")
 
     if settings.api_key is not None:
-        key = settings.api_key.strip()
-        if key:
-            _runtime_api_keys[effective_provider] = key
-        else:
-            _runtime_api_keys.pop(effective_provider, None)
-        env_var = _provider_env_var(effective_provider)
-        if env_var:
-            if key:
-                os.environ[env_var] = key
-            else:
-                os.environ.pop(env_var, None)
+        # _save_api_key handles cache + keystore + env var in one shot.
+        _save_api_key(effective_provider, settings.api_key.strip())
 
+    # Defense in depth: even though _save_api_key never writes to config, an
+    # older code path or hand-edit might. Strip it on every save.
     config["ai"].pop("api_key", None)
     if settings.base_url is not None:
         config["ai"]["base_url"] = settings.base_url
+
+    # Expert mode is a non-secret preference — fine to persist in config.json.
+    # Changing it requires a full agent rebuild so the system prompt + tool
+    # set reflect the new mode immediately on the next chat turn.
+    if settings.expert_mode is not None:
+        config["ai"]["expert_mode"] = bool(settings.expert_mode)
 
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
@@ -936,6 +1067,181 @@ def update_settings(settings: SettingsUpdate):
         return {"status": "updated", "active_provider": agent.provider_name if agent else "none"}
     except Exception as e:
         return {"status": "error", "detail": str(e)}
+
+
+# ─── Crash reports ──────────────────────────────────────────────
+# Surfaces crash dumps written by core.crash_reporter to the UI so the
+# user can view, delete, or build a "send to support" ZIP bundle.
+
+@app.get("/api/crashes")
+def list_crashes_endpoint():
+    """List crash dumps newest-first. Empty list if none."""
+    try:
+        from core.crash_reporter import list_crashes
+        return {"crashes": list_crashes()}
+    except Exception as e:
+        return {"crashes": [], "error": str(e)}
+
+
+@app.get("/api/crashes/{filename}")
+def read_crash_endpoint(filename: str):
+    """Return a single crash dump, or 404 if missing / unsafe filename."""
+    from core.crash_reporter import read_crash
+    data = read_crash(filename)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Crash report not found")
+    return data
+
+
+@app.delete("/api/crashes/{filename}")
+def delete_crash_endpoint(filename: str):
+    from core.crash_reporter import delete_crash
+    ok = delete_crash(filename)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not delete crash report")
+    return {"status": "deleted"}
+
+
+# ─── Deep Windows diagnostics (UI-friendly) ─────────────────────
+# These are thin REST wrappers around the same core modules the LLM uses
+# as tools. Same data, no chat round-trip — lets the Diagnostics panel
+# render directly.
+
+@app.get("/api/diagnostics/bsod")
+def diagnostics_bsod_endpoint(limit: int = 10):
+    """Recent BSOD events with plain-English explanations."""
+    try:
+        from core import bsod_analyzer
+        limit = max(1, min(int(limit), 50))
+        return bsod_analyzer.recent_bsods(limit=limit)
+    except Exception as e:
+        return {"events": [], "supported": False, "error": str(e)}
+
+
+@app.get("/api/diagnostics/event_log")
+def diagnostics_event_log_endpoint(log: str = "System",
+                                   hours: int = 24,
+                                   include_warnings: bool = False):
+    """Grouped + annotated summary of recent error events from a Windows log."""
+    try:
+        from core import event_log_triage
+        return event_log_triage.triage_summary(
+            log=log, hours=hours, include_warnings=include_warnings,
+        )
+    except Exception as e:
+        return {"groups": [], "supported": False, "error": str(e)}
+
+
+@app.get("/api/diagnostics/minidumps")
+def diagnostics_minidumps_endpoint():
+    """List .dmp files in C:\\Windows\\Minidump for offline analysis."""
+    try:
+        from core import bsod_analyzer
+        return bsod_analyzer.minidump_files()
+    except Exception as e:
+        return {"files": [], "supported": False, "error": str(e)}
+
+
+@app.post("/api/crashes/{filename}/bundle")
+def build_crash_bundle_endpoint(filename: str):
+    """Build a support ZIP for a crash report and return it as a download.
+
+    Bundle contents: the crash dump JSON + the last 500 lines of zora.log.
+    Secrets live in the OS keystore (DPAPI), so the bundle is safe to send
+    without further redaction.
+    """
+    from core.crash_reporter import build_support_bundle
+    bundle_path = build_support_bundle(filename)
+    if bundle_path is None or not bundle_path.exists():
+        raise HTTPException(status_code=404, detail="Crash report not found")
+    return FileResponse(
+        path=str(bundle_path),
+        media_type="application/zip",
+        filename=bundle_path.name,
+    )
+
+
+# ─── Auto-update ────────────────────────────────────────────────
+# Polls GitHub Releases, downloads the installer, hands off to Inno Setup
+# in silent mode. See core/updater.py for the full design.
+
+_LAST_DOWNLOAD: Dict[str, Any] = {}
+
+
+def _current_zora_version() -> str:
+    """Return the running version string. Single source of truth lives in
+    ``core.version`` so launcher.py, server.py, and the crash reporter all
+    agree."""
+    try:
+        from core.version import ZORA_VERSION
+        return ZORA_VERSION
+    except Exception:
+        return "0.0.0"
+
+
+@app.get("/api/update/check")
+def update_check_endpoint():
+    """Query GitHub for a newer release. Read-only, cheap to call."""
+    from core import updater
+    return updater.check_for_update(current_version=_current_zora_version())
+
+
+@app.post("/api/update/download")
+def update_download_endpoint():
+    """Re-check then download the latest installer to %LOCALAPPDATA%\\Zora\\updates.
+
+    Returns the path + SHA-256 so the UI can show the user what's about to
+    run. Stores the result in a module-global so the install endpoint can
+    use it without trusting the client to pass the path back.
+    """
+    from core import updater
+    info = updater.check_for_update(current_version=_current_zora_version())
+    if info.get("error"):
+        raise HTTPException(status_code=502, detail=info["error"])
+    if not info.get("available"):
+        raise HTTPException(status_code=409, detail="No update available")
+    result = updater.download_update(
+        asset_url=info["asset_url"],
+        sha256_url=info.get("sha256_url", ""),
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=502,
+                            detail=result.get("error", "Download failed"))
+    # Stash for the install endpoint. We deliberately don't take the path
+    # from the client — that would let a malicious local script point us
+    # at any .exe.
+    global _LAST_DOWNLOAD
+    _LAST_DOWNLOAD = {"path": result["path"], "version": info["latest_version"]}
+    return {**result, "version": info["latest_version"]}
+
+
+@app.post("/api/update/install")
+def update_install_endpoint():
+    """Launch the previously-downloaded installer and exit Zora.
+
+    The Inno installer will close us (``/CLOSEAPPLICATIONS``) and relaunch
+    us after replacement (``/RESTARTAPPLICATIONS``). We schedule our own
+    exit ~2 seconds out so the HTTP response can flush before uvicorn dies.
+    """
+    from core import updater
+    path = _LAST_DOWNLOAD.get("path")
+    if not path:
+        raise HTTPException(status_code=409,
+                            detail="No installer staged — call /api/update/download first.")
+    result = updater.launch_installer(path)
+    if not result.get("started"):
+        raise HTTPException(status_code=500,
+                            detail=result.get("error", "Could not launch installer"))
+
+    # Schedule a clean shutdown so Inno can replace files. This intentionally
+    # uses os._exit (not sys.exit) because uvicorn traps SystemExit.
+    async def _delayed_exit():
+        await asyncio.sleep(2)
+        logger.info("Update install scheduled — exiting for Inno Setup.")
+        os._exit(0)
+
+    asyncio.create_task(_delayed_exit())
+    return {"status": "installer_launched", "argv": result.get("argv", [])}
 
 
 def _find_frontend_dist() -> Optional[str]:

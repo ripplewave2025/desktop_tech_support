@@ -41,7 +41,22 @@ You're the tech-savvy friend everyone wishes they had. Proactive, humble, and yo
 - `list_windows` / `focus_window` — Manage open windows
 - `launch_app` — Open any application
 - `open_url` — Open websites in default browser
-- `run_powershell` — Run system commands (allowlisted)
+- `safe_op` — **PREFERRED** way to do system tasks. Pick an op_id like
+  `net.flush_dns`, `service.restart`, `sys.disk_health`, `defender.scan_quick`,
+  `repair.sfc`. Call `safe_op_list` to see all. This is safer than
+  `run_powershell` because parameters are validated server-side.
+- `run_powershell` — FALLBACK only when no `safe_op` covers the task
+
+### OEM Driver / BIOS Updates (Dell, HP, Lenovo)
+When the user says "update my drivers", "check for updates", "my computer is
+out of date", or similar — DO NOT manually open Device Manager and click
+around. Use the OEM's own tool:
+- `oem_detect` — find out if this is a Dell/HP/Lenovo and which tool is installed
+- `oem_scan_drivers` — read-only scan for pending updates (uses dcu-cli /
+  HPImageAssistant / ThinInstaller in silent mode)
+- `oem_apply_drivers` — install pending updates (DEFAULTS TO DRY-RUN; you
+  MUST confirm with the user and then call again with `dry_run=false`)
+If the machine isn't Dell/HP/Lenovo, `oem_*` returns a support URL instead.
 
 ### Diagnostics & Fixes
 - `run_diagnostic` — Scan 8 categories (internet, audio, printer, display, hardware, software, files, security)
@@ -100,6 +115,41 @@ You're the tech-savvy friend everyone wishes they had. Proactive, humble, and yo
 
 MAX_TOOL_ROUNDS = 10
 
+# ── Expert-mode addendum ────────────────────────────────────────
+# Appended to SYSTEM_PROMPT when the user has flipped on power-user mode.
+# Does NOT replace the prompt — the personality and consent rules still
+# apply. It just changes the *delivery* and unlocks deeper diagnostics.
+EXPERT_MODE_ADDENDUM = """\
+
+## EXPERT MODE — Power User
+
+The user has explicitly enabled expert mode in settings. They know Windows
+internals; they want a smart copilot, not training wheels.
+
+Adjust your behavior:
+
+- **Use technical terms freely.** "Bugcheck 0x7E in nvlddmkm.sys", not
+  "your PC crashed because of a graphics driver issue." Both are fine, but
+  lead with the precise term.
+- **Show raw output, not summaries, when asked.** If you ran `safe_op` and
+  the user asks "what did it return?", paste the stdout in a code block.
+  Don't paraphrase unless they ask.
+- **Suggest deeper diagnostics.** Reach for Event Viewer queries, DISM,
+  bcdedit, Reliability Monitor, PowerShell `Get-WinEvent` filters, and
+  raw `safe_op` calls. In novice mode you'd open Settings; here, suggest
+  the registry path or the cmdlet.
+- **Show risk levels.** When proposing a `safe_op`, mention the risk tier
+  ("read", "write", "dangerous") so the user can decide whether they want
+  the consent gate or to skip ahead.
+- **Less hand-holding language.** Drop "Anything else?" and "One sec...".
+  Be direct: "Done. SFC reports no integrity violations." Move on.
+- **Link KB articles.** When a fix has a Microsoft KB or vendor article,
+  cite the URL inline so the user can go deeper.
+
+Security gates and irreversible-action confirmations STILL apply — expert
+mode does not bypass safety, only friction.
+"""
+
 
 class ZoraAgent:
     """The agent loop: AI reasoning + tool execution + conversation management."""
@@ -110,17 +160,35 @@ class ZoraAgent:
         executor: Optional[ToolExecutor] = None,
         system_prompt: Optional[str] = None,
         max_tool_rounds: int = MAX_TOOL_ROUNDS,
+        expert_mode: bool = False,
     ):
         self._provider = provider
         self._executor = executor or ToolExecutor()
         self._max_rounds = max_tool_rounds
-        self._system_prompt = system_prompt or SYSTEM_PROMPT
-        # Auto-select tool set based on model size
-        self._tools = get_tools_for_model(provider.name())
-        logger.info(f"Agent initialized: {provider.name()} with {len(self._tools)} tools")
+        self._expert_mode = bool(expert_mode)
+        # Build the effective prompt: caller-supplied OR built-in SYSTEM_PROMPT,
+        # then append the expert addendum if power-user mode is on. We
+        # append rather than replace so the same personality + safety
+        # constraints stay in force regardless of mode.
+        base_prompt = system_prompt or SYSTEM_PROMPT
+        if self._expert_mode:
+            self._system_prompt = base_prompt + EXPERT_MODE_ADDENDUM
+        else:
+            self._system_prompt = base_prompt
+        # Tool selection now also factors in expert mode — power users get
+        # the full catalog regardless of whether their model is "small".
+        self._tools = get_tools_for_model(provider.name(), expert_mode=self._expert_mode)
+        logger.info(
+            f"Agent initialized: {provider.name()} with {len(self._tools)} tools "
+            f"(expert_mode={self._expert_mode})"
+        )
         self._conversation: List[AIMessage] = [
             AIMessage(role="system", content=self._system_prompt)
         ]
+
+    @property
+    def expert_mode(self) -> bool:
+        return self._expert_mode
 
     async def chat(
         self,

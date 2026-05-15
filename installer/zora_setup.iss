@@ -10,9 +10,10 @@
 ; ─────────────────────────────────────────────────────────────
 
 #define MyAppName "Zora"
-#define MyAppVersion "2.0.0"
+; Bumped to match core/version.py — keep these two in sync on every release.
+#define MyAppVersion "2.3.1"
 #define MyAppPublisher "Zora Project"
-#define MyAppURL "https://github.com/zora-desktop"
+#define MyAppURL "https://github.com/ripplewave2025/desktop_tech_support"
 #define MyAppExeName "Zora.exe"
 #define MyAppDescription "AI Desktop Companion — your personal tech support"
 
@@ -34,7 +35,11 @@ DisableProgramGroupPage=yes
 
 ; Output
 OutputDir=output
-OutputBaseFilename=ZoraSetup-{#MyAppVersion}
+; IMPORTANT: keep filename stable across versions (no version suffix). The
+; auto-updater looks for "ZoraSetup.exe" as the release asset name; the
+; GitHub Release tag conveys the version. Changing this filename will
+; silently break updates from older clients.
+OutputBaseFilename=ZoraSetup
 SetupIconFile=..\assets\zora_icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 

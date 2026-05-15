@@ -226,9 +226,31 @@ export function ChatWidget({
 }) {
   const [input, setInput] = useState('');
   const [dueFollowUps, setDueFollowUps] = useState([]);
+  const [expertMode, setExpertMode] = useState(false);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const lastSpokenIndexRef = useRef(-1);
+
+  // Light polling on the cheap mode endpoint so the header badge reflects
+  // the live setting even when the user toggles it from the Settings panel.
+  // The endpoint is one config-file read with no I/O, so 5s is fine.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchMode = () => {
+      fetch('/api/settings/mode')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!cancelled && data) setExpertMode(!!data.expert_mode);
+        })
+        .catch(() => { /* offline — keep last known value */ });
+    };
+    fetchMode();
+    const id = setInterval(fetchMode, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // Voice state is owned by App and passed down so the Settings panel
   // can share the same voice-mode toggle. Fall back to a no-op shape if
@@ -329,17 +351,19 @@ export function ChatWidget({
         due={dueFollowUps}
         onOpen={handleOpenFollowUps}
       />
-      {anyVoiceSupported && (
+      {(anyVoiceSupported || expertMode) && (
         <div className="voice-bar">
-          <button
-            type="button"
-            className={`voice-pill ${voiceMode ? 'active' : ''}`}
-            onClick={toggleVoiceMode}
-            title={voiceMode ? 'Voice mode on — Zora reads replies aloud' : 'Turn on voice mode'}
-          >
-            {voiceMode ? <Volume2 /> : <VolumeX />}
-            <span>{voiceMode ? 'Voice on' : 'Voice off'}</span>
-          </button>
+          {anyVoiceSupported && (
+            <button
+              type="button"
+              className={`voice-pill ${voiceMode ? 'active' : ''}`}
+              onClick={toggleVoiceMode}
+              title={voiceMode ? 'Voice mode on — Zora reads replies aloud' : 'Turn on voice mode'}
+            >
+              {voiceMode ? <Volume2 /> : <VolumeX />}
+              <span>{voiceMode ? 'Voice on' : 'Voice off'}</span>
+            </button>
+          )}
           {isSpeaking && (
             <button
               type="button"
@@ -354,6 +378,19 @@ export function ChatWidget({
           {voiceError && !isListening && (
             <span className="voice-error" title={voiceError}>
               {voiceError.length > 40 ? voiceError.slice(0, 40) + '…' : voiceError}
+            </span>
+          )}
+          {expertMode && (
+            // Non-clickable status badge — toggle lives in Settings. The icon
+            // tells the user "you're in power mode, output and consent
+            // behavior reflect that."
+            <span
+              className="voice-pill active"
+              title="Power user mode is on — technical terms, raw output, full tool catalog"
+              style={{ cursor: 'default' }}
+            >
+              <Zap />
+              <span>Expert</span>
             </span>
           )}
         </div>
